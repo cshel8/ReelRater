@@ -1,13 +1,36 @@
 {
-  "name": "ReelRater",
-  "slug": "ReelRater",
-  "plugins": [
-    "expo-router"
-  ],
-  "android": {
-    "package": "com.anonymous.ReelRater"
-  },
-  "ios": {
-    "bundleIdentifier": "com.anonymous.ReelRater"
+  "expo": {
+    "name": "ReelRater",
+    "slug": "reelrater",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.anonymous.ReelRater"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#ffffff"
+      },
+      "package": "com.anonymous.ReelRater"
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-asset",
+      "expo-font"
+    ],
+    "scheme": "reelrater"
   }
 }
