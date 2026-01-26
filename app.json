@@ -1,4 +1,13 @@
 {
   "name": "ReelRater",
-  "slug": "ReelRater"
+  "slug": "ReelRater",
+  "plugins": [
+    "expo-router"
+  ],
+  "android": {
+    "package": "com.anonymous.ReelRater"
+  },
+  "ios": {
+    "bundleIdentifier": "com.anonymous.ReelRater"
+  }
 }
