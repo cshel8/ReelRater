@@ -36,38 +36,38 @@ export default function App() {
   };
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Login</Text>
+    <View style={ styles.container }>
+      <Text style={ styles.title }>Login</Text>
 
-      <View style={styles.label}>
+      <View style={ styles.label }>
         <Text>Username</Text>
       </View>
       <TextInput
         placeholder="Type here"
-        value={localUsername}
-        onChangeText={setLocalUsername}
-        style={styles.input}
+        value={ localUsername }
+        onChangeText={ setLocalUsername }
+        style={ styles.input }
       />
 
-      <View style={styles.label}>
+      <View style={ styles.label }>
         <Text>Password</Text>
       </View>
       <TextInput
         placeholder="Type here"
-        value={password}
-        onChangeText={setPassword}
-        style={styles.input}
+        value={ password }
+        onChangeText={ setPassword }
+        style={ styles.input }
         secureTextEntry
       />
 
       <Pressable
-        onPress={handleLogin}
+        onPress={ handleLogin }
         style={({ pressed }) => [
           styles.button,
           pressed && styles.buttonPressed,
         ]}
       >
-        <Text style = {styles.buttonText}>Login</Text>
+        <Text style = { styles.buttonText }>Login</Text>
       </Pressable>
       <Pressable 
         onPress = {() => router.push('/signup')}
@@ -76,7 +76,7 @@ export default function App() {
           pressed && styles.buttonPressed,
         ]}
         >
-          <Text style = {styles.buttonText}>Go to Signup</Text>
+          <Text style = { styles.buttonText }>Go to Signup</Text>
       </Pressable>
     </View>
   );

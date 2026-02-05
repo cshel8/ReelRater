@@ -49,7 +49,7 @@ export default function Profile() {
                 await uploadBytes( storageRef, blob );
 
                 const downloadURL = await getDownloadURL( storageRef );
-                await updateDoc(doc( db, 'users', userId), { profileImage: downloadURL });
+                await updateDoc(doc( db, 'users', userId ), { profileImage: downloadURL });
                 setProfileImage( downloadURL ); 
             } catch ( error: any ) {
                 alert( 'Error uploading image: ' + error.message );
@@ -66,25 +66,25 @@ export default function Profile() {
             {loading ? (
                 <ActivityIndicator size="large" color="#007AFF" style={{ marginBottom: 16 }} />
             ) : profileImage ? (
-                <Image source={{ uri: profileImage }} style={styles.avatar} />
+                <Image source={{ uri: profileImage }} style={ styles.avatar } />
             ) : (
-                <View style={styles.avatarPlaceholder}>
-                    <Text style={styles.avatarText}>?</Text>
+                <View style={ styles.avatarPlaceholder }>
+                    <Text style={ styles.avatarText }>?</Text>
                 </View>
             )}
 
             <Pressable
                 onPress={pickImage}
-                style={({ pressed }) => [styles.button, pressed && styles.buttonPressed]}
+                style={({ pressed }) => [ styles.button, pressed && styles.buttonPressed ]}
             >
-                <Text style={styles.buttonText}>Change Image</Text>
+                <Text style={ styles.buttonText }>Change Image</Text>
             </Pressable>
 
-            <Text style={styles.label}>Username:</Text>
-            <Text style={styles.subtitle}>{username || 'Placeholder'}</Text>
+            <Text style={ styles.label }>Username:</Text>
+            <Text style={ styles.subtitle }>{username || 'Placeholder'}</Text>
 
-            <Text style={styles.label}>Password:</Text>
-            <Text style={styles.subtitle}>*********</Text>
+            <Text style={ styles.label }>Password:</Text>
+            <Text style={ styles.subtitle }>*********</Text>
         </View>
     );
 }

@@ -35,38 +35,38 @@ export default function App() {
   };
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Signup</Text>
+    <View style={ styles.container }>
+      <Text style={ styles.title }>Signup</Text>
 
-      <View style={styles.label}>
+      <View style={ styles.label }>
         <Text>Username</Text>
       </View>
       <TextInput
         placeholder="Type here"
-        value={username}
-        onChangeText={setUsername}
-        style={styles.input}
+        value={ username }
+        onChangeText={ setUsername }
+        style={ styles.input }
       />
 
-      <View style={styles.label}>
+      <View style={ styles.label }>
         <Text>Password</Text>
       </View>
       <TextInput
         placeholder="Type here"
-        value={password}
-        onChangeText={setPassword}
-        style={styles.input}
+        value={ password }
+        onChangeText={ setPassword }
+        style={ styles.input }
         secureTextEntry
       />
 
       <Pressable
-        onPress={handleSignup}
+        onPress={ handleSignup }
         style={({ pressed }) => [
           styles.button,
           pressed && styles.buttonPressed,
         ]}
       >
-        <Text style={styles.buttonText}>Signup</Text>
+        <Text style={ styles.buttonText }>Signup</Text>
       </Pressable>
     </View>
   );
