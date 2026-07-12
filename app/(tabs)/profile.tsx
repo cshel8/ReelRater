@@ -2,9 +2,7 @@ import { View, Text, StyleSheet, Image, Pressable, ActivityIndicator } from 'rea
 import { useState, useEffect } from 'react';
 import { userStore } from '@/store/userStore';
 import * as ImagePicker from 'expo-image-picker';
-import { db, storage } from '@/config/firebase';
-import { doc, getDoc, updateDoc } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { profileService } from '@/services';
 
 export default function Profile() {
     const { profileImage, setProfileImage, userId, username, setUsername } = userStore();
@@ -15,11 +13,10 @@ export default function Profile() {
 
         const fetchUserData = async () => {
             try {
-                const userDoc = await getDoc( doc( db, 'users', userId ));
-                if ( userDoc.exists() ) {
-                    const data = userDoc.data();
-                    if ( data.username ) setUsername( data.username );
-                    if ( data.profileImage ) setProfileImage( data.profileImage );
+                const profile = await profileService.get(userId);
+                if ( profile ) {
+                    if ( profile.username ) setUsername( profile.username );
+                    if ( profile.profileImage ) setProfileImage( profile.profileImage );
                 }
             } catch ( error: any ) {
                 console.log( 'Error fetching user data:', error.message );
@@ -43,13 +40,7 @@ export default function Profile() {
                 const localUri = result.assets[0].uri;
                 setProfileImage( localUri ); 
 
-                const response = await fetch( localUri );
-                const blob = await response.blob();
-                const storageRef = ref( storage, `users/${userId}/profileImage.jpg` );
-                await uploadBytes( storageRef, blob );
-
-                const downloadURL = await getDownloadURL( storageRef );
-                await updateDoc(doc( db, 'users', userId ), { profileImage: downloadURL });
+                const downloadURL = await profileService.uploadImage(userId, localUri);
                 setProfileImage( downloadURL ); 
             } catch ( error: any ) {
                 alert( 'Error uploading image: ' + error.message );
