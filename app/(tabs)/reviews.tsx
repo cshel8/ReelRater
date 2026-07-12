@@ -1,42 +1,20 @@
 import { View, Text, TextInput, StyleSheet, Pressable, Alert, ScrollView } from 'react-native';
 import { useState, useEffect } from 'react';
-import { db } from '@/config/firebase';
 import { userStore } from '@/store/userStore';
-import { collection, addDoc, getDocs, query, where, deleteDoc, doc, serverTimestamp, orderBy } from 'firebase/firestore';
-
-type ReviewItem = {
-    id: string;
-    movieTitle: string;
-    reviewText: string;
-    rating: string;
-};
+import { reviewService } from '@/services';
+import type { Review } from '@/types/domain';
 
 export default function Review() {
     const { userId } = userStore();
     const [ movieTitle, setMovieTitle ] = useState('');
     const [ reviewText, setReviewText ] = useState('');
     const [ rating, setRating ] = useState('');
-    const [ reviews, setReviews ] = useState<ReviewItem[]>([]);
+    const [ reviews, setReviews ] = useState<Review[]>([]);
 
     const fetchReviews = async () => {
         if ( !userId ) return;
         try {
-            const q = query(
-                collection( db, 'reviews' ),
-                where( 'userId', '==', userId ),
-                orderBy( 'createdAt', 'desc' )
-            );
-            const querySnapshot = await getDocs( q );
-            const userReviews: ReviewItem[] = [];
-            querySnapshot.forEach(( docSnap ) => {
-                const data = docSnap.data();
-                userReviews.push({
-                    id: docSnap.id,
-                    movieTitle: data.movieTitle,
-                    reviewText: data.reviewText,
-                    rating: data.rating,
-                });
-            });
+            const userReviews = await reviewService.listForUser(userId);
             setReviews( userReviews );
         } catch ( error: any ) {
             console.log( 'Error fetching reviews:', error.message );
@@ -56,14 +34,12 @@ export default function Review() {
         }
         if ( !userId ) return;
         try {
-            const docRef = await addDoc( collection( db, 'reviews' ), {
-                userId,
+            const review = await reviewService.create(userId, {
                 movieTitle,
                 reviewText,
                 rating,
-                createdAt: serverTimestamp(),
             });
-            setReviews([{ id: docRef.id, movieTitle, reviewText, rating }, ...reviews ]);
+            setReviews([review, ...reviews]);
             setMovieTitle('');
             setReviewText('');
             setRating('');
@@ -74,7 +50,7 @@ export default function Review() {
     };
     const handleDelete = async ( id: string ) => {
         try {
-            await deleteDoc( doc( db, 'reviews', id ));
+            await reviewService.remove(id);
             setReviews( reviews.filter(( r ) => r.id !== id ));
         } catch ( error: any ) {
             Alert.alert( 'Error deleting review', error.message );

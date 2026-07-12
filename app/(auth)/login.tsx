@@ -2,9 +2,7 @@ import { View, Text, TextInput, StyleSheet, Pressable } from 'react-native';
 import { useState } from 'react';
 import { router } from 'expo-router';
 import { userStore } from '@/store/userStore';
-import { signInWithEmailAndPassword } from 'firebase/auth';
-import { auth, db } from '@/config/firebase';
-import { doc, getDoc } from 'firebase/firestore';
+import { authService, profileService } from '@/services';
 
 export default function App() {
   const { setUsername, setUserId } = userStore();
@@ -17,16 +15,11 @@ export default function App() {
       return;
     }
     try {
-      const cred = await signInWithEmailAndPassword( 
-        auth, 
-        `${localUsername}@example.com`, 
-        password
-      );
-      const userId = cred.user.uid;
-      const userDoc = await getDoc( doc( db, 'users', userId ));
-      if (userDoc.exists()) {
-        const userData = userDoc.data();
-        setUsername( userData.username );
+      const user = await authService.signIn(localUsername, password);
+      const userId = user.id;
+      const profile = await profileService.get(userId);
+      if (profile) {
+        setUsername(profile.username);
       }
       setUserId( userId );
       router.replace( '/home' );
