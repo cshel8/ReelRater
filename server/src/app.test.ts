@@ -26,8 +26,18 @@ after(async () => {
 
 test('GET /health returns an ALB-compatible success response', async () => {
   const response = await fetch(`${baseUrl}/health`);
+  const body = (await response.json()) as {
+    ok: boolean;
+    app: string;
+    served_by: string;
+    time: string;
+  };
 
   assert.equal(response.status, 200);
   assert.equal(response.headers.get('content-type'), 'application/json; charset=utf-8');
-  assert.deepEqual(await response.json(), { status: 'ok' });
+  assert.equal(response.headers.get('cache-control'), 'no-store');
+  assert.equal(body.ok, true);
+  assert.equal(body.app, 'reelrater');
+  assert.equal(body.served_by.length > 0, true);
+  assert.equal(Number.isNaN(Date.parse(body.time)), false);
 });
