@@ -44,7 +44,10 @@ Expected response:
 
 ```json
 {
-  "status": "ok"
+  "ok": true,
+  "app": "reelrater",
+  "served_by": "api-hostname",
+  "time": "2026-07-12T18:30:00.000Z"
 }
 ```
 
