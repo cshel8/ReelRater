@@ -1,9 +1,6 @@
 import { View, Text, StyleSheet } from 'react-native';
-import { useRouter } from 'expo-router';
 
 export default function Home() {
-    const router = useRouter();
-
     return (
         <View style = {styles.container}>
             <Text style = {styles.title}> Welcome to ReelRater</Text>

@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { router } from 'expo-router';
 import { userStore } from '@/store/userStore';
 import { authService, profileService } from '@/services';
+import { AwsHealthStatus } from '@/components/AwsHealthStatus';
 
 export default function App() {
   const { setUsername, setUserId } = userStore();
@@ -71,6 +72,10 @@ export default function App() {
         >
           <Text style = { styles.buttonText }>Go to Signup</Text>
       </Pressable>
+
+      <View style={styles.healthStatus}>
+        <AwsHealthStatus />
+      </View>
     </View>
   );
 }
@@ -81,6 +86,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     alignItems: 'center',
     justifyContent: 'center',
+    paddingHorizontal: 20,
   },
   label: {
     padding: 10,
@@ -113,5 +119,9 @@ const styles = StyleSheet.create({
   buttonText: {
     color: 'white',
     fontWeight: '600',
+  },
+  healthStatus: {
+    width: '100%',
+    marginTop: 24,
   },
 });
