@@ -1,0 +1,50 @@
+Part 1. Trace a real SSO login
+
+github.com  -> Service Provider
+accounts.google.com -> Identity Provider
+github.com  -> Service Provider 
+Trust Relationship -> GitHub trusts Google to authenticate ussers and accepts Google's verification instead of checking my password itself.
+
+1. Click the button -> Browser
+2. Redirect to the provider -> Browser
+3. Provider authenticates you  -> Login provider
+4. Redirect back to the app  -> Browser
+5. App verifies the result ->  App (Token verification inferred)
+6. App starts its own session -> App (Token verification inferred)
+
+The app believes the provider's answer because it has an established trust relationship with Google and can verify the authentication response 
+that Google sends back. This allows GitHub to accept Google's proof of my identity without asking for my Google password. If GitHub did not offer 
+Sign in with Google, users would instead need to authenticate using GitHub's own login system. That menas GitHub would be responsible for 
+maintaining its own authtntication infrastructure, securely protecting user credentials, and managing features such as password recovery and 
+multi-factor authentication.
+
+Part 2. Inside the Token
+
+The link did not work
+
+Part 3. Turn on real MFA
+
+Screenshot uploaded into screenshots folder.
+
+A password is something you know but this was a debate in class and could be argued that it is something that you have. The login code texted 
+to your phone was a little tricky to think about at first but it is something you have because the phone is something you own. Fingerprint is 
+something you are another popular example of this is Face ID.
+
+In order from weakest to strongest against an attacker using today's AI tools are SMS code, voice verification, TOTP app, and passkey/hardware 
+key. The weakest is an SMS code against todays AI tools this is because AI can easily replicate SMS codes they are also susceptible to phishing 
+attacks. Passkey/hardware key is the strongest against AI tools because like the hint says it would be very difficult for the AI to "physically 
+possess" a hardware key.
+
+Part 4. Plan for the guide who quits
+
+| Access held | World A: revoke how? | World B: revoke how? | If forgotten |
+| --- | --- | --- | --- |
+| Admin panel login + live sessions | Disable the user's account in the admin panel. | Disable the user's account in the identity provider. | Ex-guide can still modify bookings or customer data. |
+| Photo archive (shared password) | Change the shared password and tell everyone the new one. | Disable the user's identity so they automatically lose access. | Ex-guide can still view or download company photos. |
+| Group chat / manifests | Remove the user from the group chat. | Discable the user's identity so they are automatically removed from access. | Ex-guide continues receiving customer manifests and internal discussions. |
+
+At 9 guides, I think either world could work because it would not take very long to manually remove someon's access from a few systems. World A
+would likely be cheaper since it does not require setting up and maintaining a central identity provider. However, at 900 employees, I would 
+recommend World B becuase it is much more efficient to manage. Disabling one account removes access to every connected system, which saves time,
+reduces labor costs, and lowers the chance of forgetting to remove access from one system. Although World B may cost more to set up, I think the
+time savings and improved security make it worthwhile for a larger company.
