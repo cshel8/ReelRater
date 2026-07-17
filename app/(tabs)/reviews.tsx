@@ -160,7 +160,7 @@ const styles = StyleSheet.create({
         marginTop: 12,
     },
     buttonPressed: {
-        backgroundColor: "005BB5",
+        backgroundColor: "#005BB5",
     },
     buttonText: {
         color: 'white',
