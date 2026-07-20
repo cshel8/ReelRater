@@ -1,5 +1,6 @@
 import {
   createUserWithEmailAndPassword,
+  onAuthStateChanged,
   signInWithEmailAndPassword,
   signOut,
 } from 'firebase/auth';
@@ -7,20 +8,20 @@ import { auth } from '@/config/firebase';
 import type { AuthService } from '@/services/contracts';
 
 export const firebaseAuthService: AuthService = {
-  async signUp(username, password) {
+  async signUp(email, password) {
     const credential = await createUserWithEmailAndPassword(
       auth,
-      `${username}@example.com`,
+      email,
       password
     );
 
     return { id: credential.user.uid };
   },
 
-  async signIn(username, password) {
+  async signIn(email, password) {
     const credential = await signInWithEmailAndPassword(
       auth,
-      `${username}@example.com`,
+      email,
       password
     );
 
@@ -33,5 +34,11 @@ export const firebaseAuthService: AuthService = {
 
   async getAccessToken() {
     return auth.currentUser ? auth.currentUser.getIdToken() : null;
+  },
+
+  observeAuthState(callback) {
+    return onAuthStateChanged(auth, (user) => {
+      callback(user ? { id: user.uid } : null);
+    });
   },
 };

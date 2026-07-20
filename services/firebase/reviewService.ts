@@ -1,49 +1,75 @@
 import {
-  addDoc,
   collection,
   deleteDoc,
   doc,
   getDocs,
-  orderBy,
   query,
-  serverTimestamp,
+  setDoc,
   where,
 } from 'firebase/firestore';
 import { db } from '@/config/firebase';
-import type { ReviewService } from '@/services/contracts';
+import type { RemoteReviewService } from '@/services/contracts';
 import type { Review } from '@/types/domain';
 
-export const firebaseReviewService: ReviewService = {
+function readVisibility(value: unknown): Review['visibility'] {
+  return value === 'public' || value === 'followers' || value === 'private'
+    ? value
+    : 'private';
+}
+
+function readCreatedAt(value: unknown): string {
+  if (
+    value &&
+    typeof value === 'object' &&
+    'toDate' in value &&
+    typeof value.toDate === 'function'
+  ) {
+    return value.toDate().toISOString();
+  }
+
+  if (typeof value === 'string') {
+    return value;
+  }
+
+  return new Date(0).toISOString();
+}
+
+export const firebaseReviewService: RemoteReviewService = {
   async listForUser(userId) {
     const reviewsQuery = query(
       collection(db, 'reviews'),
-      where('userId', '==', userId),
-      orderBy('createdAt', 'desc')
+      where('userId', '==', userId)
     );
     const snapshot = await getDocs(reviewsQuery);
 
-    return snapshot.docs.map((reviewDocument) => {
-      const data = reviewDocument.data();
-      return {
-        id: reviewDocument.id,
-        movieTitle: data.movieTitle,
-        reviewText: data.reviewText,
-        rating: data.rating,
-      } satisfies Review;
-    });
+    return snapshot.docs
+      .map((reviewDocument) => {
+        const data = reviewDocument.data();
+        return {
+          id: reviewDocument.id,
+          movieTitle: data.movieTitle,
+          reviewText: data.reviewText,
+          rating: data.rating,
+          visibility: readVisibility(data.visibility),
+          createdAt: readCreatedAt(data.createdAt),
+          syncStatus: 'synced',
+        } satisfies Review;
+      })
+      .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
   },
 
-  async create(userId, input) {
-    const reviewDocument = await addDoc(collection(db, 'reviews'), {
+  async save(userId, review) {
+    await setDoc(doc(db, 'reviews', review.id), {
       userId,
-      ...input,
-      createdAt: serverTimestamp(),
+      movieTitle: review.movieTitle,
+      reviewText: review.reviewText,
+      rating: review.rating,
+      visibility: review.visibility,
+      createdAt: new Date(review.createdAt),
     });
-
-    return { id: reviewDocument.id, ...input };
   },
 
-  async remove(reviewId) {
+  async remove(_userId, reviewId) {
     await deleteDoc(doc(db, 'reviews', reviewId));
   },
 };
