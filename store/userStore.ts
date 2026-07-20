@@ -4,10 +4,12 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 type UserState = {
     userId: string | null;
-    username: string;
+    displayName: string;
+    handle: string;
     profileImage: string | null;
     setUserId: ( id: string | null ) => void;
-    setUsername: ( username: string ) => void;
+    setDisplayName: ( displayName: string ) => void;
+    setHandle: ( handle: string ) => void;
     setProfileImage: ( uri: string | null ) => void;
 };
 
@@ -15,10 +17,12 @@ export const userStore = create <UserState> () (
     persist(
         ( set ) => ({
             userId: null,
-            username: '',
+            displayName: '',
+            handle: '',
             profileImage: null,
             setUserId: (id ) => set({ userId: id }),
-            setUsername: ( name ) => set ({ username: name }),
+            setDisplayName: ( displayName ) => set ({ displayName }),
+            setHandle: ( handle ) => set ({ handle }),
             setProfileImage: ( uri ) => set ({ profileImage: uri }),
         }),
         {

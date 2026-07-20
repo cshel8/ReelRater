@@ -6,24 +6,43 @@ import { authService, profileService } from '@/services';
 import { AwsHealthStatus } from '@/components/AwsHealthStatus';
 
 export default function App() {
-  const { setUsername, setUserId } = userStore();
-  const [ localUsername, setLocalUsername ] = useState('');
+  const {
+    displayName: cachedDisplayName,
+    handle: cachedHandle,
+    setDisplayName,
+    setHandle,
+    setProfileImage,
+    setUserId,
+    userId: cachedUserId,
+  } = userStore();
+  const [ email, setEmail ] = useState('');
   const [ password, setPassword ] = useState('');
 
   const handleLogin = async () => {
-    if (!localUsername || !password ) {
+    if (!email.trim() || !password ) {
       alert( 'Please fill in all fields' );
       return;
     }
     try {
-      const user = await authService.signIn(localUsername, password);
+      const user = await authService.signIn(email.trim(), password);
       const userId = user.id;
       const profile = await profileService.get(userId);
-      if (profile) {
-        setUsername(profile.username);
-      }
       setUserId( userId );
-      router.replace( '/home' );
+      if (profile?.handleNormalized) {
+        setDisplayName(profile.displayName);
+        setHandle(profile.handle);
+        setProfileImage(profile.profileImage);
+        router.replace( '/home' );
+      } else {
+        const isResumingSameAccount = cachedUserId === userId;
+        setDisplayName(
+          profile?.displayName
+          ?? (isResumingSameAccount ? cachedDisplayName : '')
+        );
+        setHandle(isResumingSameAccount ? cachedHandle : '');
+        setProfileImage(profile?.profileImage ?? null);
+        router.replace('/complete-profile');
+      }
     } catch ( error: any ) {
       alert( error.message );
     }
@@ -34,13 +53,17 @@ export default function App() {
       <Text style={ styles.title }>Login</Text>
 
       <View style={ styles.label }>
-        <Text>Username</Text>
+        <Text>Email</Text>
       </View>
       <TextInput
         placeholder="Type here"
-        value={ localUsername }
-        onChangeText={ setLocalUsername }
+        value={ email }
+        onChangeText={ setEmail }
         style={ styles.input }
+        autoCapitalize="none"
+        autoCorrect={ false }
+        keyboardType="email-address"
+        textContentType="emailAddress"
       />
 
       <View style={ styles.label }>

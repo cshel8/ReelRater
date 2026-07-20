@@ -60,3 +60,7 @@ Evidence:
 Budget note:
 
 After completing the load-balancing demonstration, I changed the Auto Scaling Group's desired capacity from 2 back to 1. The minimum capacity is 1 and the maximum capacity is 3. This keeps one instance available for testing while avoiding the cost of running a second instance when it is not needed.
+
+July 15, 2026
+HW 1 
+Completed HW 1 other than part 2 in hw1 folder and added the screenshot in the screenshots folder. New screenshot is hw1-mfa-enabled.
