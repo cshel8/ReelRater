@@ -1,5 +1,5 @@
 import * as Crypto from 'expo-crypto';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import type { PosterFileStore } from '@/services/local/posterCacheTypes';
 
 const POSTER_DIRECTORY_NAME = 'reelrater-posters';

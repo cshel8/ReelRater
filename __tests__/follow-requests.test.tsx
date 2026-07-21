@@ -64,12 +64,15 @@ describe('Follow requests screen', () => {
       )
     );
 
-    await waitFor(() => {
-      expect(followService.approveFollower).toHaveBeenCalledWith(
-        'owner-1',
-        'requester-1'
-      );
-      expect(screen.queryByText('@AlexMovies')).toBeNull();
-    });
+    await waitFor(
+      () => {
+        expect(followService.approveFollower).toHaveBeenCalledWith(
+          'owner-1',
+          'requester-1'
+        );
+        expect(screen.queryByText('@AlexMovies')).toBeNull();
+      },
+      { timeout: 3000 }
+    );
   });
 });

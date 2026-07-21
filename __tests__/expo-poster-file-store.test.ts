@@ -1,4 +1,4 @@
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import { expoPosterFileStore } from '@/services/local/expoPosterFileStore';
 
 jest.mock('expo-crypto', () => ({
@@ -6,7 +6,7 @@ jest.mock('expo-crypto', () => ({
   digestStringAsync: jest.fn().mockResolvedValue('poster-digest'),
 }));
 
-jest.mock('expo-file-system', () => ({
+jest.mock('expo-file-system/legacy', () => ({
   cacheDirectory: 'file://cache/',
   FileSystemSessionType: { FOREGROUND: 1 },
   makeDirectoryAsync: jest.fn().mockResolvedValue(undefined),
