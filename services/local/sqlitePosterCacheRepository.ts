@@ -1,4 +1,8 @@
-import { getSQLiteDatabase } from '@/database/sqliteDatabase';
+import {
+  getSQLiteDatabase,
+  runSQLiteTransaction,
+  runSQLiteWrite,
+} from '@/database/sqliteDatabase';
 import type {
   PosterCacheEntry,
   PosterCacheMetadataRepository,
@@ -40,10 +44,9 @@ export const sqlitePosterCacheRepository: PosterCacheMetadataRepository = {
   },
 
   async saveAndPrune(entry, maximumEntries) {
-    const database = await getSQLiteDatabase();
     let evictedUris: string[] = [];
 
-    await database.withExclusiveTransactionAsync(async (transaction) => {
+    await runSQLiteTransaction(async (transaction) => {
       await transaction.runAsync(
         `INSERT INTO cached_poster_files (
           catalog_id,
@@ -99,9 +102,8 @@ export const sqlitePosterCacheRepository: PosterCacheMetadataRepository = {
   },
 
   async remove(catalogId) {
-    const database = await getSQLiteDatabase();
     let localUri: string | null = null;
-    await database.withExclusiveTransactionAsync(async (transaction) => {
+    await runSQLiteTransaction(async (transaction) => {
       const row = await transaction.getFirstAsync<{ local_uri: string }>(
         `SELECT local_uri FROM cached_poster_files WHERE catalog_id = ?`,
         catalogId
@@ -116,9 +118,8 @@ export const sqlitePosterCacheRepository: PosterCacheMetadataRepository = {
   },
 
   async takeExpired(expiredAt) {
-    const database = await getSQLiteDatabase();
     let expiredUris: string[] = [];
-    await database.withExclusiveTransactionAsync(async (transaction) => {
+    await runSQLiteTransaction(async (transaction) => {
       const rows = await transaction.getAllAsync<{ local_uri: string }>(
         `SELECT local_uri
          FROM cached_poster_files
@@ -135,13 +136,14 @@ export const sqlitePosterCacheRepository: PosterCacheMetadataRepository = {
   },
 
   async markAccessed(catalogId, accessedAt) {
-    const database = await getSQLiteDatabase();
-    await database.runAsync(
-      `UPDATE cached_poster_files
-       SET last_accessed_at = ?
-       WHERE catalog_id = ?`,
-      accessedAt,
-      catalogId
+    await runSQLiteWrite((database) =>
+      database.runAsync(
+        `UPDATE cached_poster_files
+         SET last_accessed_at = ?
+         WHERE catalog_id = ?`,
+        accessedAt,
+        catalogId
+      )
     );
   },
 
@@ -154,11 +156,13 @@ export const sqlitePosterCacheRepository: PosterCacheMetadataRepository = {
   },
 
   async clear() {
-    const database = await getSQLiteDatabase();
-    const rows = await database.getAllAsync<{ local_uri: string }>(
-      `SELECT local_uri FROM cached_poster_files`
-    );
-    await database.runAsync('DELETE FROM cached_poster_files');
+    let rows: { local_uri: string }[] = [];
+    await runSQLiteTransaction(async (transaction) => {
+      rows = await transaction.getAllAsync<{ local_uri: string }>(
+        `SELECT local_uri FROM cached_poster_files`
+      );
+      await transaction.runAsync('DELETE FROM cached_poster_files');
+    });
     return rows.map((row) => row.local_uri);
   },
 };

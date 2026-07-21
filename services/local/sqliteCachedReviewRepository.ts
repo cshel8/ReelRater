@@ -1,4 +1,8 @@
-import { getSQLiteDatabase } from '@/database/sqliteDatabase';
+import {
+  getSQLiteDatabase,
+  runSQLiteTransaction,
+  runSQLiteWrite,
+} from '@/database/sqliteDatabase';
 import type { CachedReviewRepository } from '@/services/local/cachedReviewTypes';
 import type { Review } from '@/types/domain';
 import { readReviewMovieSnapshot } from '@/utils/reviewMovie';
@@ -57,12 +61,11 @@ export const sqliteCachedReviewRepository: CachedReviewRepository = {
   },
 
   async replaceForUser(userId, reviews) {
-    const database = await getSQLiteDatabase();
     const reviewsToCache = [...reviews]
       .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
       .slice(0, MAX_CACHED_REVIEWS);
 
-    await database.withExclusiveTransactionAsync(async (transaction) => {
+    await runSQLiteTransaction(async (transaction) => {
       await transaction.runAsync(
         'DELETE FROM cached_reviews WHERE user_id = ?',
         userId
@@ -96,12 +99,13 @@ export const sqliteCachedReviewRepository: CachedReviewRepository = {
   },
 
   async remove(userId, reviewId) {
-    const database = await getSQLiteDatabase();
-    await database.runAsync(
-      `DELETE FROM cached_reviews
-       WHERE user_id = ? AND review_id = ?`,
-      userId,
-      reviewId
+    await runSQLiteWrite((database) =>
+      database.runAsync(
+        `DELETE FROM cached_reviews
+         WHERE user_id = ? AND review_id = ?`,
+        userId,
+        reviewId
+      )
     );
   },
 };

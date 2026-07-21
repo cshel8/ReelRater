@@ -1,4 +1,8 @@
-import { getSQLiteDatabase } from '@/database/sqliteDatabase';
+import {
+  getSQLiteDatabase,
+  runSQLiteTransaction,
+  runSQLiteWrite,
+} from '@/database/sqliteDatabase';
 import type { MovieCacheRepository } from '@/services/local/movieCacheTypes';
 import {
   defaultMovieCachePolicy,
@@ -76,10 +80,9 @@ export const createSQLiteMovieCacheRepository = ({
       return;
     }
 
-    const database = await getSQLiteDatabase();
     const window = policy.createWindow(clock());
 
-    await database.withExclusiveTransactionAsync(async (transaction) => {
+    await runSQLiteTransaction(async (transaction) => {
       for (const movie of movies) {
         await transaction.runAsync(
           `INSERT INTO cached_movies (
@@ -144,10 +147,12 @@ export const createSQLiteMovieCacheRepository = ({
 
     const database = await getSQLiteDatabase();
     const now = clock().toISOString();
-    await database.runAsync(
-      `DELETE FROM cached_movies
-       WHERE expires_at IS NULL OR expires_at <= ?`,
-      now
+    await runSQLiteWrite((writeDatabase) =>
+      writeDatabase.runAsync(
+        `DELETE FROM cached_movies
+         WHERE expires_at IS NULL OR expires_at <= ?`,
+        now
+      )
     );
     const escapedQuery = escapeMovieLikePattern(normalizedQuery);
     const limit = normalizedLimit(
@@ -182,10 +187,12 @@ export const createSQLiteMovieCacheRepository = ({
   async getById(catalogId) {
     const database = await getSQLiteDatabase();
     const now = clock().toISOString();
-    await database.runAsync(
-      `DELETE FROM cached_movies
-       WHERE expires_at IS NULL OR expires_at <= ?`,
-      now
+    await runSQLiteWrite((writeDatabase) =>
+      writeDatabase.runAsync(
+        `DELETE FROM cached_movies
+         WHERE expires_at IS NULL OR expires_at <= ?`,
+        now
+      )
     );
     const row = await database.getFirstAsync<CachedMovieRow>(
       `SELECT catalog_id, title, release_year, genres_json, poster_url,
@@ -203,10 +210,12 @@ export const createSQLiteMovieCacheRepository = ({
   async listDueForRefresh(maximumResults = DEFAULT_REFRESH_RESULTS) {
     const database = await getSQLiteDatabase();
     const now = clock().toISOString();
-    await database.runAsync(
-      `DELETE FROM cached_movies
-       WHERE expires_at IS NULL OR expires_at <= ?`,
-      now
+    await runSQLiteWrite((writeDatabase) =>
+      writeDatabase.runAsync(
+        `DELETE FROM cached_movies
+         WHERE expires_at IS NULL OR expires_at <= ?`,
+        now
+      )
     );
     const limit = normalizedLimit(
       maximumResults,
@@ -230,28 +239,31 @@ export const createSQLiteMovieCacheRepository = ({
   },
 
   async purgeExpired() {
-    const database = await getSQLiteDatabase();
-    await database.runAsync(
-      `DELETE FROM cached_movies
-       WHERE expires_at IS NULL OR expires_at <= ?`,
-      clock().toISOString()
+    await runSQLiteWrite((database) =>
+      database.runAsync(
+        `DELETE FROM cached_movies
+         WHERE expires_at IS NULL OR expires_at <= ?`,
+        clock().toISOString()
+      )
     );
   },
 
   async markAccessed(catalogId) {
-    const database = await getSQLiteDatabase();
-    await database.runAsync(
-      `UPDATE cached_movies
-       SET last_accessed_at = ?
-       WHERE catalog_id = ?`,
-      clock().toISOString(),
-      catalogId
+    await runSQLiteWrite((database) =>
+      database.runAsync(
+        `UPDATE cached_movies
+         SET last_accessed_at = ?
+         WHERE catalog_id = ?`,
+        clock().toISOString(),
+        catalogId
+      )
     );
   },
 
   async clear() {
-    const database = await getSQLiteDatabase();
-    await database.runAsync('DELETE FROM cached_movies');
+    await runSQLiteWrite((database) =>
+      database.runAsync('DELETE FROM cached_movies')
+    );
   },
 });
 

@@ -1,4 +1,8 @@
-import { getSQLiteDatabase } from '@/database/sqliteDatabase';
+import {
+  getSQLiteDatabase,
+  runSQLiteTransaction,
+  runSQLiteWrite,
+} from '@/database/sqliteDatabase';
 import {
   createSQLiteMovieCacheRepository,
   escapeMovieLikePattern,
@@ -8,6 +12,8 @@ import type { MovieCacheRepository } from '@/services/local/movieCacheTypes';
 
 jest.mock('@/database/sqliteDatabase', () => ({
   getSQLiteDatabase: jest.fn(),
+  runSQLiteTransaction: jest.fn(),
+  runSQLiteWrite: jest.fn(),
 }));
 
 const runAsync = jest.fn();
@@ -30,6 +36,12 @@ describe('SQLite movie cache repository', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     (getSQLiteDatabase as jest.Mock).mockResolvedValue(database);
+    (runSQLiteTransaction as jest.Mock).mockImplementation(
+      (operation) => operation(database)
+    );
+    (runSQLiteWrite as jest.Mock).mockImplementation(
+      (operation) => operation(database)
+    );
     movieCache = createSQLiteMovieCacheRepository({ clock: () => now });
   });
 

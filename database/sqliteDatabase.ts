@@ -5,6 +5,23 @@ const DATABASE_VERSION = 7;
 
 let databasePromise: Promise<SQLite.SQLiteDatabase> | null = null;
 
+export function createSQLiteWriteCoordinator() {
+  let queue: Promise<void> = Promise.resolve();
+
+  return function coordinateWrite<T>(operation: () => Promise<T>): Promise<T> {
+    const result = queue.then(operation);
+
+    queue = result.then(
+      () => undefined,
+      () => undefined
+    );
+
+    return result;
+  };
+}
+
+const coordinateSQLiteWrite = createSQLiteWriteCoordinator();
+
 async function migrate(database: SQLite.SQLiteDatabase): Promise<void> {
   const versionRow = await database.getFirstAsync<{ user_version: number }>(
     'PRAGMA user_version'
@@ -164,4 +181,21 @@ export async function getSQLiteDatabase(): Promise<SQLite.SQLiteDatabase> {
   }
 
   return databasePromise;
+}
+
+export function runSQLiteWrite<T>(
+  operation: (database: SQLite.SQLiteDatabase) => Promise<T>
+): Promise<T> {
+  return coordinateSQLiteWrite(async () => {
+    const database = await getSQLiteDatabase();
+    return operation(database);
+  });
+}
+
+export function runSQLiteTransaction(
+  operation: (transaction: SQLite.SQLiteDatabase) => Promise<void>
+): Promise<void> {
+  return runSQLiteWrite((database) =>
+    database.withExclusiveTransactionAsync(operation)
+  );
 }

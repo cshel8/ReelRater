@@ -1,4 +1,8 @@
-import { getSQLiteDatabase } from '@/database/sqliteDatabase';
+import {
+  getSQLiteDatabase,
+  runSQLiteTransaction,
+  runSQLiteWrite,
+} from '@/database/sqliteDatabase';
 import type {
   PendingReviewOperation,
   PendingReviewRepository,
@@ -78,9 +82,7 @@ async function insertOperation(
 
 export const sqlitePendingReviewRepository: PendingReviewRepository = {
   async enqueueCreate(operation) {
-    const database = await getSQLiteDatabase();
-
-    await database.withExclusiveTransactionAsync(async (transaction) => {
+    await runSQLiteTransaction(async (transaction) => {
       await transaction.runAsync(
         `DELETE FROM pending_review_operations
          WHERE user_id = ? AND review_id = ?`,
@@ -92,9 +94,7 @@ export const sqlitePendingReviewRepository: PendingReviewRepository = {
   },
 
   async replaceWithDelete(operation) {
-    const database = await getSQLiteDatabase();
-
-    await database.withExclusiveTransactionAsync(async (transaction) => {
+    await runSQLiteTransaction(async (transaction) => {
       await transaction.runAsync(
         `DELETE FROM pending_review_operations
          WHERE user_id = ? AND review_id = ?`,
@@ -118,38 +118,41 @@ export const sqlitePendingReviewRepository: PendingReviewRepository = {
   },
 
   async markAttempting(operationId) {
-    const database = await getSQLiteDatabase();
-    await database.runAsync(
-      `UPDATE pending_review_operations
-       SET status = 'pending',
-           attempt_count = attempt_count + 1,
-           last_attempt_at = ?,
-           last_error = NULL
-       WHERE operation_id = ?`,
-      new Date().toISOString(),
-      operationId
+    await runSQLiteWrite((database) =>
+      database.runAsync(
+        `UPDATE pending_review_operations
+         SET status = 'pending',
+             attempt_count = attempt_count + 1,
+             last_attempt_at = ?,
+             last_error = NULL
+         WHERE operation_id = ?`,
+        new Date().toISOString(),
+        operationId
+      )
     );
   },
 
   async markFailed(operationId, message) {
-    const database = await getSQLiteDatabase();
-    await database.runAsync(
-      `UPDATE pending_review_operations
-       SET status = 'failed',
-           last_attempt_at = ?,
-           last_error = ?
-       WHERE operation_id = ?`,
-      new Date().toISOString(),
-      message,
-      operationId
+    await runSQLiteWrite((database) =>
+      database.runAsync(
+        `UPDATE pending_review_operations
+         SET status = 'failed',
+             last_attempt_at = ?,
+             last_error = ?
+         WHERE operation_id = ?`,
+        new Date().toISOString(),
+        message,
+        operationId
+      )
     );
   },
 
   async remove(operationId) {
-    const database = await getSQLiteDatabase();
-    await database.runAsync(
-      'DELETE FROM pending_review_operations WHERE operation_id = ?',
-      operationId
+    await runSQLiteWrite((database) =>
+      database.runAsync(
+        'DELETE FROM pending_review_operations WHERE operation_id = ?',
+        operationId
+      )
     );
   },
 
