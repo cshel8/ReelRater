@@ -3,6 +3,7 @@ import type {
   PendingReviewOperation,
   PendingReviewRepository,
 } from '@/services/local/pendingReviewTypes';
+import { readReviewMovieSnapshot } from '@/utils/reviewMovie';
 
 interface PendingReviewRow {
   operation_id: string;
@@ -30,6 +31,10 @@ function toOperation(row: PendingReviewRow): PendingReviewOperation {
     payload: parsedPayload
       ? {
           ...parsedPayload,
+          movie: readReviewMovieSnapshot(
+            parsedPayload.movie,
+            parsedPayload.movieTitle
+          ),
           visibility: parsedPayload.visibility ?? 'private',
         }
       : null,

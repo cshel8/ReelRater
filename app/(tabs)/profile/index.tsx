@@ -233,6 +233,27 @@ export default function Profile() {
             </Pressable>
 
             <Pressable
+                accessibilityRole="button"
+                onPress={() => router.push('/profile/about-credits')}
+                style={({ pressed }) => [
+                    styles.settingsButton,
+                    pressed && styles.buttonPressed,
+                ]}
+            >
+                <Ionicons
+                    color="#4F5662"
+                    name="information-circle-outline"
+                    size={20}
+                />
+                <Text style={styles.settingsButtonText}>About & Credits</Text>
+                <Ionicons
+                    color="#858B96"
+                    name="chevron-forward"
+                    size={19}
+                />
+            </Pressable>
+
+            <Pressable
                 disabled={signingOut}
                 onPress={handleSignOut}
                 style={({ pressed }) => [

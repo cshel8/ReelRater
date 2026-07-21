@@ -10,6 +10,7 @@ import type {
   ReviewVisibility,
   SharedReview,
 } from '@/types/domain';
+import { readReviewMovieSnapshot } from '@/utils/reviewMovie';
 
 function readCreatedAt(value: unknown): string {
   if (
@@ -86,6 +87,7 @@ export const firebaseCommunityReviewService: RemoteCommunityReviewService = {
               id: reviewDocument.id,
               authorId: data.userId,
               movieTitle: data.movieTitle,
+              movie: readReviewMovieSnapshot(data.movie, data.movieTitle),
               reviewText: data.reviewText,
               rating: data.rating,
               visibility: data.visibility,

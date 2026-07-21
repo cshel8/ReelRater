@@ -3,7 +3,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Tabs } from 'expo-router';
 import { useEffect } from 'react';
 import { colors } from '@/constants/colors';
-import { reviewService } from '@/services';
+import { movieCacheMaintenanceService, reviewService } from '@/services';
 import { userStore } from '@/store/userStore';
 
 export default function Layout() {
@@ -21,6 +21,12 @@ export default function Layout() {
                         ? syncError.message
                         : 'Unknown synchronization error';
                     console.log('Review connection sync failed:', message);
+                });
+                void movieCacheMaintenanceService.run().catch((cacheError) => {
+                    const message = cacheError instanceof Error
+                        ? cacheError.message
+                        : 'Unknown cache maintenance error';
+                    console.log('Movie cache maintenance failed:', message);
                 });
             }
         });

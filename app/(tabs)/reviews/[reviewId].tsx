@@ -11,7 +11,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { ReviewPosterPlaceholder } from '@/components/reviews/ReviewPosterPlaceholder';
+import { ReviewPoster } from '@/components/reviews/ReviewPoster';
 import { ReviewStars } from '@/components/reviews/ReviewStars';
 import {
   ReviewVisibilitySelector,
@@ -22,6 +22,11 @@ import { reviewService } from '@/services';
 import { userStore } from '@/store/userStore';
 import type { Review, ReviewVisibility } from '@/types/domain';
 import { formatReviewDate } from '@/utils/reviewFormatting';
+import {
+  createManualMovieSnapshot,
+  getDisplayReviewMovieTitle,
+  readReviewMovieSnapshot,
+} from '@/utils/reviewMovie';
 
 const STAR_VALUES = [1, 2, 3, 4, 5] as const;
 
@@ -114,6 +119,10 @@ export default function ReviewDetailsScreen() {
       const updatedReview = await reviewService.update(userId, {
         ...review,
         movieTitle: editedMovieTitle.trim(),
+        movie:
+          editedMovieTitle.trim() === review.movieTitle
+            ? readReviewMovieSnapshot(review.movie, review.movieTitle)
+            : createManualMovieSnapshot(editedMovieTitle),
         reviewText: editedReviewText.trim(),
         rating: String(editedRating),
         visibility: editedVisibility,
@@ -211,6 +220,7 @@ export default function ReviewDetailsScreen() {
   }
 
   const formattedDate = formatReviewDate(review.createdAt);
+  const displayMovieTitle = getDisplayReviewMovieTitle(review);
 
   return (
     <ScrollView
@@ -218,13 +228,14 @@ export default function ReviewDetailsScreen() {
       keyboardShouldPersistTaps="handled"
       showsVerticalScrollIndicator={false}
     >
-      <ReviewPosterPlaceholder
+      <ReviewPoster
         iconSize={48}
+        movie={review.movie}
         style={styles.poster}
-        title={review.movieTitle}
+        title={displayMovieTitle}
       />
 
-      <Text style={styles.movieTitle}>{review.movieTitle}</Text>
+      <Text style={styles.movieTitle}>{displayMovieTitle}</Text>
 
       <View style={styles.stars}>
         <ReviewStars rating={review.rating} size={25} />

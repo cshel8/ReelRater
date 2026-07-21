@@ -13,6 +13,7 @@ import {
   type ReviewSyncService,
 } from '@/services/reviews/reviewSyncService';
 import type { Review } from '@/types/domain';
+import { readReviewMovieSnapshot } from '@/utils/reviewMovie';
 
 function createOperation(
   userId: string,
@@ -119,6 +120,7 @@ export function createOfflineReviewService(
       const review: Review = {
         id: randomUUID(),
         ...input,
+        movie: readReviewMovieSnapshot(input.movie, input.movieTitle),
         createdAt: new Date().toISOString(),
         syncStatus: 'pending',
       };
@@ -141,6 +143,7 @@ export function createOfflineReviewService(
     async update(userId, review) {
       const pendingReview: Review = {
         ...review,
+        movie: readReviewMovieSnapshot(review.movie, review.movieTitle),
         syncStatus: 'pending',
       };
 

@@ -11,13 +11,14 @@ import {
   Text,
   View,
 } from 'react-native';
-import { ReviewPosterPlaceholder } from '@/components/reviews/ReviewPosterPlaceholder';
+import { ReviewPoster } from '@/components/reviews/ReviewPoster';
 import { ReviewStars } from '@/components/reviews/ReviewStars';
 import { colors } from '@/constants/colors';
 import { reviewService } from '@/services';
 import { userStore } from '@/store/userStore';
 import type { Review } from '@/types/domain';
 import { formatReviewDate } from '@/utils/reviewFormatting';
+import { getDisplayReviewMovieTitle } from '@/utils/reviewMovie';
 
 type ReviewSort = 'newest' | 'oldest' | 'highest' | 'lowest';
 
@@ -56,6 +57,7 @@ function ReviewRow({
   onPress: () => void;
 }) {
   const formattedDate = formatReviewDate(review.createdAt);
+  const displayMovieTitle = getDisplayReviewMovieTitle(review);
 
   return (
     <Pressable
@@ -67,15 +69,16 @@ function ReviewRow({
         pressed && styles.reviewRowPressed,
       ]}
     >
-      <ReviewPosterPlaceholder
+      <ReviewPoster
+        movie={review.movie}
         style={styles.poster}
-        title={review.movieTitle}
+        title={displayMovieTitle}
       />
 
       <View style={styles.reviewContent}>
         <View style={styles.reviewTitleRow}>
           <Text numberOfLines={1} style={styles.reviewTitle} testID="review-title">
-            {review.movieTitle}
+            {displayMovieTitle}
           </Text>
           {review.syncStatus !== 'synced' && (
             <Text
