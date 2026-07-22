@@ -4,6 +4,7 @@
     "strict": true,
     "jsx": "react-native",
     "ignoreDeprecations": "5.0",
+    "types": ["jest"],
     "paths": {
       "@/*": [
         "./*"
