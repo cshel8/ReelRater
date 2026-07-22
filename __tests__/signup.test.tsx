@@ -1,4 +1,5 @@
 import { fireEvent, render, waitFor } from '@testing-library/react-native';
+import { Alert } from 'react-native';
 import { router } from 'expo-router';
 import Signup from '@/app/(auth)/signup';
 import { authService, profileService, settingsService } from '@/services';
@@ -68,11 +69,15 @@ describe('Signup screen', () => {
     const screen = render(<Signup />);
 
     fireEvent.changeText(
-      screen.getAllByPlaceholderText('Type here')[0],
+      screen.getByLabelText('Email'),
       'connor@example.com'
     );
     fireEvent.changeText(
-      screen.getAllByPlaceholderText('Type here')[1],
+      screen.getByLabelText('Password'),
+      'password123'
+    );
+    fireEvent.changeText(
+      screen.getByLabelText('Confirm password'),
       'password123'
     );
     fireEvent.press(screen.getByText('Continue'));
@@ -101,5 +106,25 @@ describe('Signup screen', () => {
       );
       expect(router.replace).toHaveBeenCalledWith('/home');
     });
+  });
+
+  it('does not continue when the password confirmation does not match', () => {
+    const alertSpy = jest.spyOn(Alert, 'alert');
+    const screen = render(<Signup />);
+
+    fireEvent.changeText(screen.getByLabelText('Email'), 'connor@example.com');
+    fireEvent.changeText(screen.getByLabelText('Password'), 'password123');
+    fireEvent.changeText(
+      screen.getByLabelText('Confirm password'),
+      'different-password'
+    );
+    fireEvent.press(screen.getByText('Continue'));
+
+    expect(alertSpy).toHaveBeenCalledWith(
+      'Passwords do not match',
+      'Retype your password so both entries are the same.'
+    );
+    expect(screen.getByText('Create your account')).toBeTruthy();
+    expect(screen.queryByText('Choose your profile')).toBeNull();
   });
 });

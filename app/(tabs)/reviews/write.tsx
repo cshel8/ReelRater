@@ -1,8 +1,15 @@
 import { Ionicons } from '@expo/vector-icons';
 import NetInfo from '@react-native-community/netinfo';
+import { useNavigation } from 'expo-router';
+import {
+  usePreventRemove,
+  type NavigationAction,
+} from 'expo-router/react-navigation';
 import { useCallback, useEffect, useState } from 'react';
 import {
+  ActivityIndicator,
   Alert,
+  Image,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -12,16 +19,28 @@ import {
 } from 'react-native';
 import { ReviewVisibilitySelector } from '@/components/reviews/ReviewVisibilitySelector';
 import { colors } from '@/constants/colors';
-import { reviewService, settingsService } from '@/services';
+import {
+  movieCatalogService,
+  reviewService,
+  settingsService,
+} from '@/services';
 import { userStore } from '@/store/userStore';
-import type { ReviewVisibility } from '@/types/domain';
+import type { MovieSummary, ReviewVisibility } from '@/types/domain';
+import {
+  createManualMovieSnapshot,
+  createMatchedMovieSnapshot,
+} from '@/utils/reviewMovie';
 
 const LARGE_QUEUE_WARNING_THRESHOLD = 25;
 const STAR_VALUES = [1, 2, 3, 4, 5] as const;
 
 export default function ReviewScreen() {
+  const navigation = useNavigation();
   const { userId } = userStore();
   const [movieTitle, setMovieTitle] = useState('');
+  const [selectedMovie, setSelectedMovie] = useState<MovieSummary | null>(null);
+  const [movieResults, setMovieResults] = useState<MovieSummary[]>([]);
+  const [isSearchingMovies, setIsSearchingMovies] = useState(false);
   const [reviewText, setReviewText] = useState('');
   const [rating, setRating] = useState(0);
   const [defaultVisibility, setDefaultVisibility] =
@@ -32,6 +51,15 @@ export default function ReviewScreen() {
   const [isOffline, setIsOffline] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [pendingNavigationAction, setPendingNavigationAction] =
+    useState<NavigationAction | null>(null);
+
+  const hasUnsavedChanges =
+    movieTitle.trim().length > 0 ||
+    selectedMovie !== null ||
+    reviewText.trim().length > 0 ||
+    rating !== 0 ||
+    visibility !== defaultVisibility;
 
   const fetchReviewStatus = useCallback(async () => {
     if (!userId) {
@@ -123,7 +151,65 @@ export default function ReviewScreen() {
     };
   }, [userId]);
 
-  const handleSubmit = async () => {
+  useEffect(() => {
+    const query = movieTitle.trim();
+    if (
+      query.length < 2 ||
+      (selectedMovie && query === selectedMovie.title)
+    ) {
+      if (movieResults.length > 0) {
+        setMovieResults([]);
+      }
+      if (isSearchingMovies) {
+        setIsSearchingMovies(false);
+      }
+      return;
+    }
+
+    let active = true;
+    const timer = setTimeout(() => {
+      setIsSearchingMovies(true);
+      movieCatalogService
+        .search(query, { maximumResults: 8 })
+        .then((page) => {
+          if (active) {
+            setMovieResults(page.movies);
+          }
+        })
+        .catch((searchError) => {
+          if (active) {
+            setMovieResults([]);
+            console.log(
+              'Unable to search movies:',
+              searchError instanceof Error
+                ? searchError.message
+                : searchError
+            );
+          }
+        })
+        .finally(() => {
+          if (active) {
+            setIsSearchingMovies(false);
+          }
+        });
+    }, 350);
+
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, [movieTitle, selectedMovie]);
+
+  useEffect(() => {
+    if (hasUnsavedChanges || !pendingNavigationAction) {
+      return;
+    }
+
+    navigation.dispatch(pendingNavigationAction);
+    setPendingNavigationAction(null);
+  }, [hasUnsavedChanges, navigation, pendingNavigationAction]);
+
+  const handleSubmit = async (onSaved?: () => void) => {
     if (!movieTitle.trim() || !reviewText.trim() || rating === 0) {
       Alert.alert('Please choose a movie, rating, and write your review');
       return;
@@ -137,18 +223,25 @@ export default function ReviewScreen() {
     try {
       const review = await reviewService.create(userId, {
         movieTitle: movieTitle.trim(),
+        movie: selectedMovie
+          ? createMatchedMovieSnapshot(selectedMovie)
+          : createManualMovieSnapshot(movieTitle),
         reviewText: reviewText.trim(),
         rating: String(rating),
         visibility,
       });
 
       setMovieTitle('');
+      setSelectedMovie(null);
+      setMovieResults([]);
       setReviewText('');
       setRating(0);
       setVisibility(defaultVisibility);
       await fetchReviewStatus();
 
-      if (review.syncStatus === 'synced') {
+      if (onSaved) {
+        onSaved();
+      } else if (review.syncStatus === 'synced') {
         Alert.alert('Review posted!');
       } else {
         Alert.alert(
@@ -164,6 +257,29 @@ export default function ReviewScreen() {
       setIsSubmitting(false);
     }
   };
+
+  usePreventRemove(hasUnsavedChanges, ({ data }) => {
+    Alert.alert(
+      'Post review before leaving?',
+      "Your review hasn't been posted. Would you like to post it before leaving?",
+      [
+        {
+          text: 'Keep Writing',
+          style: 'cancel',
+        },
+        {
+          text: 'Discard Draft',
+          style: 'destructive',
+          onPress: () => navigation.dispatch(data.action),
+        },
+        {
+          text: 'Post Review',
+          onPress: () =>
+            void handleSubmit(() => setPendingNavigationAction(data.action)),
+        },
+      ]
+    );
+  });
 
   return (
     <ScrollView
@@ -221,7 +337,10 @@ export default function ReviewScreen() {
           <TextInput
             accessibilityLabel="Movie title"
             autoCapitalize="words"
-            onChangeText={setMovieTitle}
+            onChangeText={(value) => {
+              setMovieTitle(value);
+              setSelectedMovie(null);
+            }}
             placeholder="Search for a movie"
             placeholderTextColor="#9DA3AE"
             returnKeyType="next"
@@ -229,8 +348,72 @@ export default function ReviewScreen() {
             value={movieTitle}
           />
         </View>
+        {isSearchingMovies ? (
+          <View style={styles.movieSearchStatus}>
+            <ActivityIndicator color={colors.reviewAccent} size="small" />
+            <Text style={styles.movieSearchStatusText}>Searching movies…</Text>
+          </View>
+        ) : null}
+        {movieResults.length > 0 ? (
+          <View style={styles.movieResults}>
+            {movieResults.map((movie) => (
+              <Pressable
+                accessibilityLabel={`Select ${movie.title}${
+                  movie.releaseYear ? ` (${movie.releaseYear})` : ''
+                }`}
+                accessibilityRole="button"
+                key={movie.catalogId}
+                onPress={() => {
+                  setSelectedMovie(movie);
+                  setMovieTitle(movie.title);
+                  setMovieResults([]);
+                  void movieCatalogService
+                    .getById(movie.catalogId)
+                    .catch(() => undefined);
+                }}
+                style={({ pressed }) => [
+                  styles.movieResult,
+                  pressed && styles.movieResultPressed,
+                ]}
+              >
+                {movie.posterUrl ? (
+                  <Image
+                    source={{ uri: movie.posterUrl }}
+                    style={styles.movieResultPoster}
+                  />
+                ) : (
+                  <View style={styles.movieResultPosterPlaceholder}>
+                    <Ionicons color="#9DA3AE" name="film-outline" size={21} />
+                  </View>
+                )}
+                <View style={styles.movieResultText}>
+                  <Text numberOfLines={1} style={styles.movieResultTitle}>
+                    {movie.title}
+                  </Text>
+                  <Text numberOfLines={1} style={styles.movieResultDetails}>
+                    {[
+                      movie.releaseYear,
+                      movie.genres.slice(0, 2).join(', '),
+                    ]
+                      .filter(Boolean)
+                      .join(' · ') || 'Movie'}
+                  </Text>
+                </View>
+                <Ionicons color="#858B96" name="chevron-forward" size={19} />
+              </Pressable>
+            ))}
+          </View>
+        ) : null}
         <Text style={styles.searchHint}>
-          Movie search will be connected later. For now, type the title.
+          {selectedMovie
+            ? `Selected${
+                selectedMovie.releaseYear
+                  ? ` · ${selectedMovie.releaseYear}`
+                  : ''
+              }. Edit the title to choose a different movie.`
+            : isOffline
+              ? 'Search cached movies, or type a title to create a manual offline review.'
+              : 'Choose a result, or type a title to create a manual review.'}
         </Text>
 
         <Text style={[styles.label, styles.ratingLabel]}>Your Rating</Text>
@@ -403,6 +586,65 @@ const styles = StyleSheet.create({
     color: '#7B8190',
     fontSize: 12,
     marginTop: 7,
+  },
+  movieSearchStatus: {
+    minHeight: 44,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 9,
+    paddingHorizontal: 12,
+  },
+  movieSearchStatusText: {
+    color: '#737A86',
+    fontSize: 13,
+  },
+  movieResults: {
+    borderWidth: 1,
+    borderColor: '#E1E3E8',
+    borderRadius: 11,
+    marginTop: 8,
+    overflow: 'hidden',
+  },
+  movieResult: {
+    minHeight: 72,
+    backgroundColor: '#FFFFFF',
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#E5E7EB',
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 11,
+  },
+  movieResultPressed: {
+    backgroundColor: colors.reviewAccentSoft,
+  },
+  movieResultPoster: {
+    width: 38,
+    height: 56,
+    borderRadius: 5,
+    backgroundColor: '#ECEDEF',
+  },
+  movieResultPosterPlaceholder: {
+    width: 38,
+    height: 56,
+    borderRadius: 5,
+    backgroundColor: '#F1F2F4',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  movieResultText: {
+    flex: 1,
+  },
+  movieResultTitle: {
+    color: '#24252A',
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  movieResultDetails: {
+    color: '#7B8190',
+    fontSize: 12,
+    marginTop: 5,
   },
   ratingLabel: {
     marginTop: 36,

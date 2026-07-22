@@ -5,6 +5,10 @@ import type {
   CreateReviewInput,
   CreateUserProfileInput,
   FollowRelationship,
+  MovieCatalogId,
+  MovieDetails,
+  MovieSearchOptions,
+  MovieSearchPage,
   PublicUserProfile,
   Review,
   SharedReview,
@@ -22,10 +26,32 @@ export interface AuthService {
   ): () => void;
 }
 
+export interface AccountDeletionService {
+  deleteCurrentAccount(password: string): Promise<void>;
+}
+
+export interface ConnectivityService {
+  isOnline(): Promise<boolean>;
+}
+
 export interface ProfileService {
   create(userId: string, input: CreateUserProfileInput): Promise<UserProfile>;
   get(userId: string): Promise<UserProfile | null>;
   uploadImage(userId: string, localUri: string): Promise<string>;
+}
+
+/**
+ * Provider-independent access to movie search and details.
+ *
+ * A TMDB, another vendor, or a local cache adapter can implement this
+ * contract without changing screens or review services.
+ */
+export interface MovieCatalogService {
+  search(
+    query: string,
+    options?: MovieSearchOptions
+  ): Promise<MovieSearchPage>;
+  getById(catalogId: MovieCatalogId): Promise<MovieDetails | null>;
 }
 
 export interface SettingsService {

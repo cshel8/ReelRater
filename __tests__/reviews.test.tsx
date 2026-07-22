@@ -1,4 +1,5 @@
 import NetInfo from '@react-native-community/netinfo';
+import { Alert } from 'react-native';
 import {
   act,
   fireEvent,
@@ -6,7 +7,29 @@ import {
   waitFor,
 } from '@testing-library/react-native';
 import ReviewScreen from '@/app/(tabs)/reviews/write';
-import { reviewService, settingsService } from '@/services';
+import {
+  movieCatalogService,
+  reviewService,
+  settingsService,
+} from '@/services';
+
+const mockDispatch = jest.fn();
+let mockPreventRemove:
+  | ((options: { data: { action: { type: string } } }) => void)
+  | undefined;
+
+jest.mock('expo-router', () => ({
+  useNavigation: () => ({ dispatch: mockDispatch }),
+}));
+
+jest.mock('expo-router/react-navigation', () => ({
+  usePreventRemove: (
+    preventRemove: boolean,
+    callback: (options: { data: { action: { type: string } } }) => void
+  ) => {
+    mockPreventRemove = preventRemove ? callback : undefined;
+  },
+}));
 
 jest.mock('@expo/vector-icons', () => ({
   Ionicons: 'Ionicons',
@@ -24,6 +47,10 @@ jest.mock('@/store/userStore', () => ({
 }));
 
 jest.mock('@/services', () => ({
+  movieCatalogService: {
+    search: jest.fn(),
+    getById: jest.fn(),
+  },
   reviewService: {
     create: jest.fn(),
     listForUser: jest.fn(),
@@ -37,6 +64,7 @@ jest.mock('@/services', () => ({
 describe('Write Review screen', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockPreventRemove = undefined;
     (reviewService.listForUser as jest.Mock).mockResolvedValue({
       reviews: [],
       pendingCount: 0,
@@ -59,6 +87,11 @@ describe('Write Review screen', () => {
     (settingsService.get as jest.Mock).mockResolvedValue({
       defaultReviewVisibility: 'private',
     });
+    (movieCatalogService.search as jest.Mock).mockResolvedValue({
+      movies: [],
+      nextCursor: null,
+    });
+    (movieCatalogService.getById as jest.Mock).mockResolvedValue(null);
   });
 
   it('starts with the profile default but allows a one-review override', async () => {
@@ -101,10 +134,65 @@ describe('Write Review screen', () => {
     await waitFor(() => {
       expect(reviewService.create).toHaveBeenCalledWith('user-1', {
         movieTitle: 'Arrival',
+        movie: {
+          matchStatus: 'manual',
+          catalogId: null,
+          title: 'Arrival',
+          releaseYear: null,
+          genres: [],
+          posterUrl: null,
+        },
         reviewText: 'Excellent science fiction.',
         rating: '4',
         visibility: 'private',
       });
+    });
+  });
+
+  it('saves the selected catalog movie as a review snapshot', async () => {
+    (movieCatalogService.search as jest.Mock).mockResolvedValue({
+      movies: [
+        {
+          catalogId: 'tmdb:329865',
+          title: 'Arrival',
+          releaseYear: 2016,
+          genres: ['Drama', 'Science Fiction'],
+          posterUrl: 'https://image.example/arrival.jpg',
+        },
+      ],
+      nextCursor: null,
+    });
+    const screen = render(<ReviewScreen />);
+
+    fireEvent.changeText(screen.getByLabelText('Movie title'), 'Arriv');
+    fireEvent.press(await screen.findByLabelText('Select Arrival (2016)'));
+    fireEvent.press(screen.getByLabelText('5 out of 5 stars'));
+    fireEvent.changeText(
+      screen.getByLabelText('Your review'),
+      'A thoughtful science-fiction film.'
+    );
+    fireEvent.press(screen.getByText('Post Review'));
+
+    await waitFor(() => {
+      expect(reviewService.create).toHaveBeenCalledWith(
+        'user-1',
+        expect.objectContaining({
+          movieTitle: 'Arrival',
+          movie: expect.objectContaining({
+            matchStatus: 'matched',
+            catalogId: 'tmdb:329865',
+            title: 'Arrival',
+            releaseYear: 2016,
+            genres: ['Drama', 'Science Fiction'],
+            posterUrl: 'https://image.example/arrival.jpg',
+            catalogDataRetention: expect.objectContaining({
+              fetchedAt: expect.any(String),
+              refreshAfter: expect.any(String),
+              expiresAt: expect.any(String),
+            }),
+          }),
+        })
+      );
     });
   });
 
@@ -133,5 +221,49 @@ describe('Write Review screen', () => {
       });
     });
     expect(screen.queryByText(/Offline mode/)).toBeNull();
+  });
+
+  it('offers to post a completed draft before leaving', async () => {
+    const alertSpy = jest.spyOn(Alert, 'alert');
+    const screen = render(<ReviewScreen />);
+
+    fireEvent.changeText(screen.getByLabelText('Movie title'), 'Arrival');
+    fireEvent.press(screen.getByLabelText('4 out of 5 stars'));
+    fireEvent.changeText(
+      screen.getByLabelText('Your review'),
+      'Excellent science fiction.'
+    );
+
+    const backAction = { type: 'GO_BACK' };
+    act(() => {
+      mockPreventRemove?.({ data: { action: backAction } });
+    });
+
+    expect(alertSpy).toHaveBeenCalledWith(
+      'Post review before leaving?',
+      "Your review hasn't been posted. Would you like to post it before leaving?",
+      expect.any(Array)
+    );
+
+    const buttons = alertSpy.mock.calls.at(-1)?.[2];
+    const postButton = buttons?.find((button) => button.text === 'Post Review');
+    await act(async () => {
+      postButton?.onPress?.();
+    });
+
+    await waitFor(() => {
+      expect(reviewService.create).toHaveBeenCalled();
+      expect(mockDispatch).toHaveBeenCalledWith(backAction);
+    });
+  });
+
+  it('does not intercept leaving when the form is blank', async () => {
+    render(<ReviewScreen />);
+
+    await waitFor(() => {
+      expect(settingsService.get).toHaveBeenCalledWith('user-1');
+    });
+
+    expect(mockPreventRemove).toBeUndefined();
   });
 });

@@ -10,6 +10,7 @@ import {
 import { db } from '@/config/firebase';
 import type { RemoteReviewService } from '@/services/contracts';
 import type { Review } from '@/types/domain';
+import { readReviewMovieSnapshot } from '@/utils/reviewMovie';
 
 function readVisibility(value: unknown): Review['visibility'] {
   return value === 'public' || value === 'followers' || value === 'private'
@@ -45,9 +46,12 @@ export const firebaseReviewService: RemoteReviewService = {
     return snapshot.docs
       .map((reviewDocument) => {
         const data = reviewDocument.data();
+        const movieTitle =
+          typeof data.movieTitle === 'string' ? data.movieTitle : '';
         return {
           id: reviewDocument.id,
-          movieTitle: data.movieTitle,
+          movieTitle,
+          movie: readReviewMovieSnapshot(data.movie, movieTitle),
           reviewText: data.reviewText,
           rating: data.rating,
           visibility: readVisibility(data.visibility),
@@ -62,6 +66,7 @@ export const firebaseReviewService: RemoteReviewService = {
     await setDoc(doc(db, 'reviews', review.id), {
       userId,
       movieTitle: review.movieTitle,
+      movie: readReviewMovieSnapshot(review.movie, review.movieTitle),
       reviewText: review.reviewText,
       rating: review.rating,
       visibility: review.visibility,

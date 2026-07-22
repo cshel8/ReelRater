@@ -1,6 +1,15 @@
 import { Ionicons } from '@expo/vector-icons';
-import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
-import { useCallback, useState } from 'react';
+import {
+  router,
+  useFocusEffect,
+  useLocalSearchParams,
+  useNavigation,
+} from 'expo-router';
+import {
+  usePreventRemove,
+  type NavigationAction,
+} from 'expo-router/react-navigation';
+import { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -11,7 +20,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { ReviewPosterPlaceholder } from '@/components/reviews/ReviewPosterPlaceholder';
+import { ReviewPoster } from '@/components/reviews/ReviewPoster';
 import { ReviewStars } from '@/components/reviews/ReviewStars';
 import {
   ReviewVisibilitySelector,
@@ -22,10 +31,16 @@ import { reviewService } from '@/services';
 import { userStore } from '@/store/userStore';
 import type { Review, ReviewVisibility } from '@/types/domain';
 import { formatReviewDate } from '@/utils/reviewFormatting';
+import {
+  createManualMovieSnapshot,
+  getDisplayReviewMovieTitle,
+  readReviewMovieSnapshot,
+} from '@/utils/reviewMovie';
 
 const STAR_VALUES = [1, 2, 3, 4, 5] as const;
 
 export default function ReviewDetailsScreen() {
+  const navigation = useNavigation();
   const { reviewId: reviewIdParameter } = useLocalSearchParams<{
     reviewId: string | string[];
   }>();
@@ -44,6 +59,16 @@ export default function ReviewDetailsScreen() {
     useState<ReviewVisibility>('private');
   const [isSaving, setIsSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [pendingNavigationAction, setPendingNavigationAction] =
+    useState<NavigationAction | null>(null);
+
+  const hasUnsavedChanges =
+    isEditing &&
+    review !== null &&
+    (editedMovieTitle.trim() !== review.movieTitle ||
+      editedReviewText.trim() !== review.reviewText ||
+      editedRating !== Number(review.rating) ||
+      editedVisibility !== review.visibility);
 
   const loadReview = useCallback(async () => {
     if (!userId || !reviewId) {
@@ -97,8 +122,18 @@ export default function ReviewDetailsScreen() {
     setIsEditing(true);
   };
 
-  const saveChanges = async () => {
+  useEffect(() => {
+    if (hasUnsavedChanges || !pendingNavigationAction) {
+      return;
+    }
+
+    navigation.dispatch(pendingNavigationAction);
+    setPendingNavigationAction(null);
+  }, [hasUnsavedChanges, navigation, pendingNavigationAction]);
+
+  const saveChanges = async (onSaved?: () => void) => {
     if (
+      isSaving ||
       !userId ||
       !review ||
       !editedMovieTitle.trim() ||
@@ -114,6 +149,10 @@ export default function ReviewDetailsScreen() {
       const updatedReview = await reviewService.update(userId, {
         ...review,
         movieTitle: editedMovieTitle.trim(),
+        movie:
+          editedMovieTitle.trim() === review.movieTitle
+            ? readReviewMovieSnapshot(review.movie, review.movieTitle)
+            : createManualMovieSnapshot(editedMovieTitle),
         reviewText: editedReviewText.trim(),
         rating: String(editedRating),
         visibility: editedVisibility,
@@ -121,7 +160,9 @@ export default function ReviewDetailsScreen() {
       setReview(updatedReview);
       setIsEditing(false);
 
-      if (updatedReview.syncStatus === 'synced') {
+      if (onSaved) {
+        onSaved();
+      } else if (updatedReview.syncStatus === 'synced') {
         Alert.alert('Review updated');
       } else {
         Alert.alert(
@@ -140,6 +181,29 @@ export default function ReviewDetailsScreen() {
       setIsSaving(false);
     }
   };
+
+  usePreventRemove(hasUnsavedChanges, ({ data }) => {
+    Alert.alert(
+      'Save review changes?',
+      "Your review changes haven't been saved. Would you like to save them before leaving?",
+      [
+        {
+          text: 'Keep Editing',
+          style: 'cancel',
+        },
+        {
+          text: 'Discard Changes',
+          style: 'destructive',
+          onPress: () => navigation.dispatch(data.action),
+        },
+        {
+          text: 'Save Changes',
+          onPress: () =>
+            void saveChanges(() => setPendingNavigationAction(data.action)),
+        },
+      ]
+    );
+  });
 
   const deleteReview = async () => {
     if (!userId || !review) {
@@ -211,6 +275,7 @@ export default function ReviewDetailsScreen() {
   }
 
   const formattedDate = formatReviewDate(review.createdAt);
+  const displayMovieTitle = getDisplayReviewMovieTitle(review);
 
   return (
     <ScrollView
@@ -218,13 +283,14 @@ export default function ReviewDetailsScreen() {
       keyboardShouldPersistTaps="handled"
       showsVerticalScrollIndicator={false}
     >
-      <ReviewPosterPlaceholder
+      <ReviewPoster
         iconSize={48}
+        movie={review.movie}
         style={styles.poster}
-        title={review.movieTitle}
+        title={displayMovieTitle}
       />
 
-      <Text style={styles.movieTitle}>{review.movieTitle}</Text>
+      <Text style={styles.movieTitle}>{displayMovieTitle}</Text>
 
       <View style={styles.stars}>
         <ReviewStars rating={review.rating} size={25} />

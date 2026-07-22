@@ -1,6 +1,7 @@
 import { View, Text, TextInput, StyleSheet, Pressable } from 'react-native';
 import { useState } from 'react';
 import { router } from 'expo-router';
+import { colors } from '@/constants/colors';
 import { userStore } from '@/store/userStore';
 import { authService, profileService } from '@/services';
 import { AwsHealthStatus } from '@/components/AwsHealthStatus';
@@ -131,13 +132,13 @@ const styles = StyleSheet.create({
   },
   button: {
     marginTop: 16,
-    backgroundColor: '#007AFF',
+    backgroundColor: colors.reviewAccent,
     paddingVertical: 12,
     paddingHorizontal: 40,
     borderRadius: 8,
   },
   buttonPressed: {
-    backgroundColor: '#ddd',
+    backgroundColor: colors.reviewAccentPressed,
   },
   buttonText: {
     color: 'white',

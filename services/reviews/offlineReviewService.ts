@@ -1,5 +1,6 @@
 import { randomUUID } from 'expo-crypto';
 import type {
+  ConnectivityService,
   RemoteReviewService,
   ReviewService,
 } from '@/services/contracts';
@@ -13,6 +14,7 @@ import {
   type ReviewSyncService,
 } from '@/services/reviews/reviewSyncService';
 import type { Review } from '@/types/domain';
+import { readReviewMovieSnapshot } from '@/utils/reviewMovie';
 
 function createOperation(
   userId: string,
@@ -76,33 +78,52 @@ export function createOfflineReviewService(
   pendingRepository: PendingReviewRepository,
   cachedRepository: CachedReviewRepository,
   remoteService: RemoteReviewService,
+  connectivityService: ConnectivityService = {
+    async isOnline() {
+      return true;
+    },
+  },
   syncService: ReviewSyncService = createReviewSyncService(
     pendingRepository,
     remoteService
   )
 ): ReviewService {
+  const canSynchronize = async () => {
+    try {
+      return await connectivityService.isOnline();
+    } catch {
+      return false;
+    }
+  };
+
   return {
     async listForUser(userId) {
       let remoteReviews: Review[] = [];
       let remoteAvailable = true;
       let remoteError: string | null = null;
 
-      try {
-        remoteReviews = await remoteService.listForUser(userId);
-        try {
-          await cachedRepository.replaceForUser(userId, remoteReviews);
-        } catch (cacheError) {
-          const message =
-            cacheError instanceof Error
-              ? cacheError.message
-              : 'Unknown local cache error';
-          console.log('Unable to update the offline review cache:', message);
-        }
-      } catch (error) {
+      if (!(await canSynchronize())) {
         remoteAvailable = false;
-        remoteError = getErrorMessage(error);
-        console.log('Unable to load reviews from the remote service:', remoteError);
+        remoteError = 'Device is offline';
         remoteReviews = await cachedRepository.listForUser(userId);
+      } else {
+        try {
+          remoteReviews = await remoteService.listForUser(userId);
+          try {
+            await cachedRepository.replaceForUser(userId, remoteReviews);
+          } catch (cacheError) {
+            const message =
+              cacheError instanceof Error
+                ? cacheError.message
+                : 'Unknown local cache error';
+            console.log('Unable to update the offline review cache:', message);
+          }
+        } catch (error) {
+          remoteAvailable = false;
+          remoteError = getErrorMessage(error);
+          console.log('Unable to load reviews from the remote service:', remoteError);
+          remoteReviews = await cachedRepository.listForUser(userId);
+        }
       }
 
       const operations = await pendingRepository.listForUser(userId);
@@ -119,6 +140,7 @@ export function createOfflineReviewService(
       const review: Review = {
         id: randomUUID(),
         ...input,
+        movie: readReviewMovieSnapshot(input.movie, input.movieTitle),
         createdAt: new Date().toISOString(),
         syncStatus: 'pending',
       };
@@ -126,7 +148,10 @@ export function createOfflineReviewService(
       await pendingRepository.enqueueCreate(
         createOperation(userId, review.id, 'create', review)
       );
-      await syncService.sync(userId);
+      await cachedRepository.save(userId, review);
+      if (await canSynchronize()) {
+        await syncService.sync(userId);
+      }
 
       const remainingOperation = (
         await pendingRepository.listForUser(userId)
@@ -141,13 +166,17 @@ export function createOfflineReviewService(
     async update(userId, review) {
       const pendingReview: Review = {
         ...review,
+        movie: readReviewMovieSnapshot(review.movie, review.movieTitle),
         syncStatus: 'pending',
       };
 
       await pendingRepository.enqueueCreate(
         createOperation(userId, review.id, 'create', pendingReview)
       );
-      await syncService.sync(userId);
+      await cachedRepository.save(userId, pendingReview);
+      if (await canSynchronize()) {
+        await syncService.sync(userId);
+      }
 
       const remainingOperation = (
         await pendingRepository.listForUser(userId)
@@ -172,7 +201,9 @@ export function createOfflineReviewService(
             : 'Unknown local cache error';
         console.log('Unable to remove the cached review:', message);
       }
-      await syncService.sync(userId);
+      if (await canSynchronize()) {
+        await syncService.sync(userId);
+      }
     },
 
     syncPending(userId) {

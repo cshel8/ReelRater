@@ -32,6 +32,7 @@ export default function Signup() {
   const [step, setStep] = useState<SignupStep>(1);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [displayName, setLocalDisplayName] = useState('');
   const [handle, setLocalHandle] = useState('');
   const [accountPrivacy, setAccountPrivacy] =
@@ -42,8 +43,15 @@ export default function Signup() {
   const [isFinishing, setIsFinishing] = useState(false);
 
   const continueFromAccount = () => {
-    if (!email.trim() || !password) {
-      Alert.alert('Please enter an email and password');
+    if (!email.trim() || !password || !confirmPassword) {
+      Alert.alert('Please enter an email, password, and confirm your password');
+      return;
+    }
+    if (password !== confirmPassword) {
+      Alert.alert(
+        'Passwords do not match',
+        'Retype your password so both entries are the same.'
+      );
       return;
     }
     setStep(2);
@@ -141,6 +149,7 @@ export default function Signup() {
 
               <Text style={styles.label}>Email</Text>
               <TextInput
+                accessibilityLabel="Email"
                 autoCapitalize="none"
                 autoCorrect={false}
                 keyboardType="email-address"
@@ -153,11 +162,28 @@ export default function Signup() {
 
               <Text style={styles.label}>Password</Text>
               <TextInput
+                accessibilityLabel="Password"
+                autoCapitalize="none"
+                autoCorrect={false}
                 onChangeText={setPassword}
                 placeholder="Type here"
                 secureTextEntry
                 style={styles.input}
+                textContentType="newPassword"
                 value={password}
+              />
+
+              <Text style={styles.label}>Confirm Password</Text>
+              <TextInput
+                accessibilityLabel="Confirm password"
+                autoCapitalize="none"
+                autoCorrect={false}
+                onChangeText={setConfirmPassword}
+                placeholder="Retype your password"
+                secureTextEntry
+                style={styles.input}
+                textContentType="newPassword"
+                value={confirmPassword}
               />
 
               <Pressable

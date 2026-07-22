@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router, useFocusEffect } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -11,13 +11,15 @@ import {
   Text,
   View,
 } from 'react-native';
-import { ReviewPosterPlaceholder } from '@/components/reviews/ReviewPosterPlaceholder';
+import { ReviewPoster } from '@/components/reviews/ReviewPoster';
 import { ReviewStars } from '@/components/reviews/ReviewStars';
 import { colors } from '@/constants/colors';
+import { useResetTabScroll } from '@/hooks/useResetTabScroll';
 import { communityFeedService } from '@/services';
 import { userStore } from '@/store/userStore';
 import type { CommunityReview, PublicUserProfile } from '@/types/domain';
 import { formatReviewDate } from '@/utils/reviewFormatting';
+import { getDisplayReviewMovieTitle } from '@/utils/reviewMovie';
 
 function AuthorAvatar({ author }: { author: PublicUserProfile }) {
   if (author.profileImage) {
@@ -35,6 +37,7 @@ function AuthorAvatar({ author }: { author: PublicUserProfile }) {
 
 function CommunityReviewCard({ review }: { review: CommunityReview }) {
   const formattedDate = formatReviewDate(review.createdAt);
+  const displayMovieTitle = getDisplayReviewMovieTitle(review);
 
   return (
     <View style={styles.reviewCard}>
@@ -67,13 +70,14 @@ function CommunityReviewCard({ review }: { review: CommunityReview }) {
       </Pressable>
 
       <View style={styles.reviewRow}>
-        <ReviewPosterPlaceholder
+        <ReviewPoster
+          movie={review.movie}
           style={styles.poster}
-          title={review.movieTitle}
+          title={displayMovieTitle}
         />
         <View style={styles.reviewContent}>
           <Text numberOfLines={2} style={styles.movieTitle}>
-            {review.movieTitle}
+            {displayMovieTitle}
           </Text>
           <View style={styles.stars}>
             <ReviewStars rating={review.rating} />
@@ -91,6 +95,7 @@ function CommunityReviewCard({ review }: { review: CommunityReview }) {
 }
 
 export default function CommunityScreen() {
+  const listRef = useRef<FlatList<CommunityReview>>(null);
   const userId = userStore((state) => state.userId);
   const [reviews, setReviews] = useState<CommunityReview[]>([]);
   const [followsAnyone, setFollowsAnyone] = useState(false);
@@ -144,6 +149,7 @@ export default function CommunityScreen() {
       void loadFeed();
     }, [loadFeed])
   );
+  useResetTabScroll(listRef);
 
   if (isLoading) {
     return (
@@ -156,6 +162,7 @@ export default function CommunityScreen() {
 
   return (
     <FlatList
+      ref={listRef}
       style={styles.list}
       contentContainerStyle={[
         styles.listContent,

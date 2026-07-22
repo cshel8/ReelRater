@@ -1,8 +1,18 @@
-import { fireEvent, render, waitFor } from '@testing-library/react-native';
+import {
+  act,
+  fireEvent,
+  render,
+  waitFor,
+} from '@testing-library/react-native';
 import { Alert } from 'react-native';
 import { router } from 'expo-router';
 import ReviewDetailsScreen from '@/app/(tabs)/reviews/[reviewId]';
 import { reviewService } from '@/services';
+
+const mockDispatch = jest.fn();
+let mockPreventRemove:
+  | ((options: { data: { action: { type: string } } }) => void)
+  | undefined;
 
 jest.mock('@expo/vector-icons', () => ({
   Ionicons: 'Ionicons',
@@ -12,11 +22,23 @@ jest.mock('expo-router', () => ({
   router: {
     replace: jest.fn(),
   },
+  useNavigation: () => ({ dispatch: mockDispatch }),
   useFocusEffect: (callback: () => void) => {
     const React = require('react');
     React.useEffect(callback, [callback]);
   },
   useLocalSearchParams: () => ({ reviewId: 'review-1' }),
+}));
+
+jest.mock('expo-router/react-navigation', () => ({
+  usePreventRemove: (
+    preventRemove: boolean,
+    callback: (options: {
+      data: { action: { type: string } };
+    }) => void
+  ) => {
+    mockPreventRemove = preventRemove ? callback : undefined;
+  },
 }));
 
 jest.mock('@/store/userStore', () => ({
@@ -35,6 +57,7 @@ jest.mock('@/services', () => ({
 describe('Review Details screen', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockPreventRemove = undefined;
     (reviewService.listForUser as jest.Mock).mockResolvedValue({
       reviews: [
         {
@@ -95,6 +118,58 @@ describe('Review Details screen', () => {
         })
       );
     });
+  });
+
+  it('offers to save edited review fields before navigating back', async () => {
+    let promptButtons: Parameters<typeof Alert.alert>[2];
+    const alertSpy = jest
+      .spyOn(Alert, 'alert')
+      .mockImplementation((title, _message, buttons) => {
+        if (title === 'Save review changes?') {
+          promptButtons = buttons;
+        }
+      });
+    const backAction = { type: 'GO_BACK' };
+    const screen = render(<ReviewDetailsScreen />);
+    await screen.findByText('Arrival');
+
+    fireEvent.press(screen.getByText('Edit Review'));
+    fireEvent.changeText(
+      screen.getByLabelText('Edit review text'),
+      'Save this updated review before leaving.'
+    );
+    mockPreventRemove?.({ data: { action: backAction } });
+
+    expect(alertSpy).toHaveBeenCalledWith(
+      'Save review changes?',
+      "Your review changes haven't been saved. Would you like to save them before leaving?",
+      expect.any(Array)
+    );
+
+    act(() => {
+      promptButtons
+        ?.find((button) => button.text === 'Save Changes')
+        ?.onPress?.();
+    });
+
+    await waitFor(() => {
+      expect(reviewService.update).toHaveBeenCalledWith(
+        'user-1',
+        expect.objectContaining({
+          reviewText: 'Save this updated review before leaving.',
+        })
+      );
+      expect(mockDispatch).toHaveBeenCalledWith(backAction);
+    });
+  });
+
+  it('does not guard Back when edit mode has no changes', async () => {
+    const screen = render(<ReviewDetailsScreen />);
+    await screen.findByText('Arrival');
+
+    fireEvent.press(screen.getByText('Edit Review'));
+
+    expect(mockPreventRemove).toBeUndefined();
   });
 
   it('confirms before deleting and returns to My Reviews', async () => {

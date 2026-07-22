@@ -1,8 +1,18 @@
-import { fireEvent, render, waitFor } from '@testing-library/react-native';
+import {
+  act,
+  fireEvent,
+  render,
+  waitFor,
+} from '@testing-library/react-native';
 import { Alert } from 'react-native';
 import { router } from 'expo-router';
 import PrivacyVisibilityScreen from '@/app/(tabs)/profile/privacy-visibility';
 import { followService, settingsService } from '@/services';
+
+const mockDispatch = jest.fn();
+let mockPreventRemove:
+  | ((options: { data: { action: { type: string } } }) => void)
+  | undefined;
 
 jest.mock('@expo/vector-icons', () => ({
   Ionicons: 'Ionicons',
@@ -10,9 +20,21 @@ jest.mock('@expo/vector-icons', () => ({
 
 jest.mock('expo-router', () => ({
   router: { push: jest.fn() },
+  useNavigation: () => ({ dispatch: mockDispatch }),
   useFocusEffect: (callback: () => void) => {
     const React = require('react');
     React.useEffect(callback, [callback]);
+  },
+}));
+
+jest.mock('expo-router/react-navigation', () => ({
+  usePreventRemove: (
+    preventRemove: boolean,
+    callback: (options: {
+      data: { action: { type: string } };
+    }) => void
+  ) => {
+    mockPreventRemove = preventRemove ? callback : undefined;
   },
 }));
 
@@ -34,6 +56,7 @@ jest.mock('@/services', () => ({
 describe('Privacy and visibility screen', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockPreventRemove = undefined;
     (settingsService.get as jest.Mock).mockResolvedValue({
       accountPrivacy: 'private',
       defaultReviewVisibility: 'followers',
@@ -113,5 +136,66 @@ describe('Privacy and visibility screen', () => {
       );
     });
     expect(followService.listPendingRequests).toHaveBeenCalledWith('owner-1');
+  });
+
+  it('offers to save unsaved changes before navigating back', async () => {
+    let promptButtons: Parameters<typeof Alert.alert>[2];
+    const alertSpy = jest
+      .spyOn(Alert, 'alert')
+      .mockImplementation((title, _message, buttons) => {
+        if (title === 'Save changes?') {
+          promptButtons = buttons;
+        }
+      });
+    const backAction = { type: 'GO_BACK' };
+    const screen = render(<PrivacyVisibilityScreen />);
+
+    await screen.findByText('Save Settings');
+    fireEvent.press(screen.getByText('Only Me'));
+    mockPreventRemove?.({ data: { action: backAction } });
+
+    expect(alertSpy).toHaveBeenCalledWith(
+      'Save changes?',
+      "Your changes haven't been saved. Would you like to save them before leaving?",
+      expect.any(Array)
+    );
+
+    act(() => {
+      promptButtons
+        ?.find((button) => button.text === 'Save Changes')
+        ?.onPress?.();
+    });
+
+    await waitFor(() => {
+      expect(settingsService.setPrivacyPreferences).toHaveBeenCalledWith(
+        'owner-1',
+        {
+          accountPrivacy: 'private',
+          defaultReviewVisibility: 'private',
+        }
+      );
+      expect(mockDispatch).toHaveBeenCalledWith(backAction);
+    });
+  });
+
+  it('can discard unsaved changes and continue navigating back', async () => {
+    let promptButtons: Parameters<typeof Alert.alert>[2];
+    jest.spyOn(Alert, 'alert').mockImplementation((title, _message, buttons) => {
+      if (title === 'Save changes?') {
+        promptButtons = buttons;
+      }
+    });
+    const backAction = { type: 'GO_BACK' };
+    const screen = render(<PrivacyVisibilityScreen />);
+
+    await screen.findByText('Save Settings');
+    fireEvent.press(screen.getByText('Only Me'));
+    mockPreventRemove?.({ data: { action: backAction } });
+    promptButtons
+      ?.find((button) => button.text === 'Discard Changes')
+      ?.onPress?.();
+
+    expect(settingsService.setPrivacyPreferences).not.toHaveBeenCalled();
+    expect(mockDispatch).toHaveBeenCalledWith(backAction);
   });
 });

@@ -1,9 +1,26 @@
 import * as SQLite from 'expo-sqlite';
 
 const DATABASE_NAME = 'reel-rater.db';
-const DATABASE_VERSION = 3;
+const DATABASE_VERSION = 7;
 
 let databasePromise: Promise<SQLite.SQLiteDatabase> | null = null;
+
+export function createSQLiteWriteCoordinator() {
+  let queue: Promise<void> = Promise.resolve();
+
+  return function coordinateWrite<T>(operation: () => Promise<T>): Promise<T> {
+    const result = queue.then(operation);
+
+    queue = result.then(
+      () => undefined,
+      () => undefined
+    );
+
+    return result;
+  };
+}
+
+const coordinateSQLiteWrite = createSQLiteWriteCoordinator();
 
 async function migrate(database: SQLite.SQLiteDatabase): Promise<void> {
   const versionRow = await database.getFirstAsync<{ user_version: number }>(
@@ -65,6 +82,91 @@ async function migrate(database: SQLite.SQLiteDatabase): Promise<void> {
         PRAGMA user_version = 3;
       `);
     }
+
+    if (currentVersion < 4) {
+      await transaction.execAsync(`
+        CREATE TABLE IF NOT EXISTS cached_movies (
+          catalog_id TEXT PRIMARY KEY NOT NULL,
+          title TEXT NOT NULL,
+          normalized_title TEXT NOT NULL,
+          release_year INTEGER,
+          genres_json TEXT NOT NULL,
+          poster_url TEXT,
+          cached_at TEXT NOT NULL,
+          last_accessed_at TEXT NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS cached_movies_title_index
+          ON cached_movies(normalized_title);
+
+        CREATE INDEX IF NOT EXISTS cached_movies_access_index
+          ON cached_movies(last_accessed_at DESC);
+
+        PRAGMA user_version = 4;
+      `);
+    }
+
+    if (currentVersion < 5) {
+      await transaction.execAsync(`
+        ALTER TABLE cached_reviews
+          ADD COLUMN movie_json TEXT;
+
+        PRAGMA user_version = 5;
+      `);
+    }
+
+    if (currentVersion < 6) {
+      await transaction.execAsync(`
+        ALTER TABLE cached_movies
+          ADD COLUMN refresh_after TEXT;
+
+        ALTER TABLE cached_movies
+          ADD COLUMN expires_at TEXT;
+
+        UPDATE cached_movies
+        SET
+          refresh_after = strftime(
+            '%Y-%m-%dT%H:%M:%fZ',
+            cached_at,
+            '+150 days'
+          ),
+          expires_at = strftime(
+            '%Y-%m-%dT%H:%M:%fZ',
+            cached_at,
+            '+179 days'
+          );
+
+        CREATE INDEX IF NOT EXISTS cached_movies_refresh_index
+          ON cached_movies(refresh_after);
+
+        CREATE INDEX IF NOT EXISTS cached_movies_expiration_index
+          ON cached_movies(expires_at);
+
+        PRAGMA user_version = 6;
+      `);
+    }
+
+    if (currentVersion < 7) {
+      await transaction.execAsync(`
+        CREATE TABLE IF NOT EXISTS cached_poster_files (
+          catalog_id TEXT PRIMARY KEY NOT NULL,
+          source_url TEXT NOT NULL,
+          local_uri TEXT NOT NULL,
+          catalog_fetched_at TEXT NOT NULL,
+          refresh_after TEXT NOT NULL,
+          expires_at TEXT NOT NULL,
+          last_accessed_at TEXT NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS cached_poster_files_expiration_index
+          ON cached_poster_files(expires_at);
+
+        CREATE INDEX IF NOT EXISTS cached_poster_files_access_index
+          ON cached_poster_files(last_accessed_at DESC);
+
+        PRAGMA user_version = 7;
+      `);
+    }
   });
 }
 
@@ -79,4 +181,21 @@ export async function getSQLiteDatabase(): Promise<SQLite.SQLiteDatabase> {
   }
 
   return databasePromise;
+}
+
+export function runSQLiteWrite<T>(
+  operation: (database: SQLite.SQLiteDatabase) => Promise<T>
+): Promise<T> {
+  return coordinateSQLiteWrite(async () => {
+    const database = await getSQLiteDatabase();
+    return operation(database);
+  });
+}
+
+export function runSQLiteTransaction(
+  operation: (transaction: SQLite.SQLiteDatabase) => Promise<void>
+): Promise<void> {
+  return runSQLiteWrite((database) =>
+    database.withExclusiveTransactionAsync(operation)
+  );
 }

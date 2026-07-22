@@ -1,5 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
-import { router, useFocusEffect } from 'expo-router';
+import { router, useFocusEffect, useNavigation } from 'expo-router';
+import {
+  usePreventRemove,
+  type NavigationAction,
+} from 'expo-router/react-navigation';
 import {
   ActivityIndicator,
   Alert,
@@ -17,6 +21,7 @@ import { userStore } from '@/store/userStore';
 import type { AccountPrivacy, ReviewVisibility } from '@/types/domain';
 
 export default function PrivacyVisibilityScreen() {
+  const navigation = useNavigation();
   const userId = userStore((state) => state.userId);
   const [accountPrivacy, setAccountPrivacy] =
     useState<AccountPrivacy>('public');
@@ -29,6 +34,13 @@ export default function PrivacyVisibilityScreen() {
   const [pendingRequestCount, setPendingRequestCount] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [pendingNavigationAction, setPendingNavigationAction] =
+    useState<NavigationAction | null>(null);
+
+  const hasUnsavedChanges =
+    !isLoading &&
+    (visibility !== savedVisibility ||
+      accountPrivacy !== savedAccountPrivacy);
 
   useEffect(() => {
     if (!userId) {
@@ -97,7 +109,16 @@ export default function PrivacyVisibilityScreen() {
     }, [userId])
   );
 
-  const persistPreferences = async () => {
+  useEffect(() => {
+    if (hasUnsavedChanges || !pendingNavigationAction) {
+      return;
+    }
+
+    navigation.dispatch(pendingNavigationAction);
+    setPendingNavigationAction(null);
+  }, [hasUnsavedChanges, navigation, pendingNavigationAction]);
+
+  const persistPreferences = async (onSaved?: () => void) => {
     if (!userId || isSaving) {
       return;
     }
@@ -110,7 +131,11 @@ export default function PrivacyVisibilityScreen() {
       });
       setSavedAccountPrivacy(accountPrivacy);
       setSavedVisibility(visibility);
-      Alert.alert('Privacy settings updated');
+      if (onSaved) {
+        onSaved();
+      } else {
+        Alert.alert('Privacy settings updated');
+      }
     } catch (error) {
       Alert.alert(
         'Unable to save settings',
@@ -121,7 +146,7 @@ export default function PrivacyVisibilityScreen() {
     }
   };
 
-  const save = () => {
+  const save = (onSaved?: () => void) => {
     const isBecomingPublic =
       savedAccountPrivacy === 'private' && accountPrivacy === 'public';
 
@@ -145,15 +170,38 @@ export default function PrivacyVisibilityScreen() {
           },
           {
             text: 'Make Public',
-            onPress: () => void persistPreferences(),
+            onPress: () => void persistPreferences(onSaved),
           },
         ]
       );
       return;
     }
 
-    void persistPreferences();
+    void persistPreferences(onSaved);
   };
+
+  usePreventRemove(hasUnsavedChanges, ({ data }) => {
+    Alert.alert(
+      'Save changes?',
+      "Your changes haven't been saved. Would you like to save them before leaving?",
+      [
+        {
+          text: 'Keep Editing',
+          style: 'cancel',
+        },
+        {
+          text: 'Discard Changes',
+          style: 'destructive',
+          onPress: () => navigation.dispatch(data.action),
+        },
+        {
+          text: 'Save Changes',
+          onPress: () =>
+            save(() => setPendingNavigationAction(data.action)),
+        },
+      ]
+    );
+  });
 
   if (isLoading) {
     return (
@@ -198,7 +246,7 @@ export default function PrivacyVisibilityScreen() {
           (visibility === savedVisibility &&
             accountPrivacy === savedAccountPrivacy)
         }
-        onPress={save}
+        onPress={() => save()}
         style={({ pressed }) => [
           styles.saveButton,
           (pressed ||

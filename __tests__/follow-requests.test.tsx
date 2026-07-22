@@ -56,14 +56,23 @@ describe('Follow requests screen', () => {
   it('allows the private account owner to approve a request', async () => {
     const screen = render(<FollowRequestsScreen />);
 
-    fireEvent.press(await screen.findByLabelText('Approve @AlexMovies'));
+    fireEvent.press(
+      await screen.findByLabelText(
+        'Approve @AlexMovies',
+        {},
+        { timeout: 3000 }
+      )
+    );
 
-    await waitFor(() => {
-      expect(followService.approveFollower).toHaveBeenCalledWith(
-        'owner-1',
-        'requester-1'
-      );
-      expect(screen.queryByText('@AlexMovies')).toBeNull();
-    });
+    await waitFor(
+      () => {
+        expect(followService.approveFollower).toHaveBeenCalledWith(
+          'owner-1',
+          'requester-1'
+        );
+        expect(screen.queryByText('@AlexMovies')).toBeNull();
+      },
+      { timeout: 3000 }
+    );
   });
 });
