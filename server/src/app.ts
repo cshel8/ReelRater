@@ -4,9 +4,22 @@ import { createMovieRouter } from './movies/movieRoutes.js';
 import { TmdbMovieCatalog } from './movies/tmdbMovieCatalog.js';
 import type { MovieCatalogService } from './movies/types.js';
 import { unavailableMovieCatalog } from './movies/unavailableMovieCatalog.js';
+import { createAccountRouter } from './accounts/accountRoutes.js';
+import {
+  firebaseAccountDataDeleter,
+  firebaseAccountIdentityVerifier,
+} from './accounts/firebaseAccountDeletion.js';
+import type {
+  AccountDataDeleter,
+  AccountIdentityVerifier,
+} from './accounts/types.js';
 
 export const createApp = (
-  options: { movieCatalog?: MovieCatalogService } = {}
+  options: {
+    movieCatalog?: MovieCatalogService;
+    accountIdentityVerifier?: AccountIdentityVerifier;
+    accountDataDeleter?: AccountDataDeleter;
+  } = {}
 ) => {
   const app = express();
   const token = process.env.TMDB_READ_ACCESS_TOKEN?.trim();
@@ -28,6 +41,13 @@ export const createApp = (
   });
 
   app.use('/api/v1/movies', createMovieRouter(movieCatalog));
+  app.use(
+    '/api/v1/account',
+    createAccountRouter(
+      options.accountIdentityVerifier ?? firebaseAccountIdentityVerifier,
+      options.accountDataDeleter ?? firebaseAccountDataDeleter
+    )
+  );
 
   return app;
 };

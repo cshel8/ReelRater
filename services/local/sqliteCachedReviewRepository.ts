@@ -98,6 +98,44 @@ export const sqliteCachedReviewRepository: CachedReviewRepository = {
     });
   },
 
+  async save(userId, review) {
+    await runSQLiteTransaction(async (transaction) => {
+      await transaction.runAsync(
+        `INSERT OR REPLACE INTO cached_reviews (
+          review_id,
+          user_id,
+          movie_title,
+          movie_json,
+          review_text,
+          rating,
+          visibility,
+          created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        review.id,
+        userId,
+        review.movieTitle,
+        JSON.stringify(readReviewMovieSnapshot(review.movie, review.movieTitle)),
+        review.reviewText,
+        review.rating,
+        review.visibility,
+        review.createdAt
+      );
+      await transaction.runAsync(
+        `DELETE FROM cached_reviews
+         WHERE user_id = ?
+           AND review_id NOT IN (
+             SELECT review_id FROM cached_reviews
+             WHERE user_id = ?
+             ORDER BY created_at DESC
+             LIMIT ?
+           )`,
+        userId,
+        userId,
+        MAX_CACHED_REVIEWS
+      );
+    });
+  },
+
   async remove(userId, reviewId) {
     await runSQLiteWrite((database) =>
       database.runAsync(

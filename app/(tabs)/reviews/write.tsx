@@ -1,5 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
 import NetInfo from '@react-native-community/netinfo';
+import { useNavigation } from 'expo-router';
+import {
+  usePreventRemove,
+  type NavigationAction,
+} from 'expo-router/react-navigation';
 import { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
@@ -30,6 +35,7 @@ const LARGE_QUEUE_WARNING_THRESHOLD = 25;
 const STAR_VALUES = [1, 2, 3, 4, 5] as const;
 
 export default function ReviewScreen() {
+  const navigation = useNavigation();
   const { userId } = userStore();
   const [movieTitle, setMovieTitle] = useState('');
   const [selectedMovie, setSelectedMovie] = useState<MovieSummary | null>(null);
@@ -45,6 +51,15 @@ export default function ReviewScreen() {
   const [isOffline, setIsOffline] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [pendingNavigationAction, setPendingNavigationAction] =
+    useState<NavigationAction | null>(null);
+
+  const hasUnsavedChanges =
+    movieTitle.trim().length > 0 ||
+    selectedMovie !== null ||
+    reviewText.trim().length > 0 ||
+    rating !== 0 ||
+    visibility !== defaultVisibility;
 
   const fetchReviewStatus = useCallback(async () => {
     if (!userId) {
@@ -185,7 +200,16 @@ export default function ReviewScreen() {
     };
   }, [movieTitle, selectedMovie]);
 
-  const handleSubmit = async () => {
+  useEffect(() => {
+    if (hasUnsavedChanges || !pendingNavigationAction) {
+      return;
+    }
+
+    navigation.dispatch(pendingNavigationAction);
+    setPendingNavigationAction(null);
+  }, [hasUnsavedChanges, navigation, pendingNavigationAction]);
+
+  const handleSubmit = async (onSaved?: () => void) => {
     if (!movieTitle.trim() || !reviewText.trim() || rating === 0) {
       Alert.alert('Please choose a movie, rating, and write your review');
       return;
@@ -215,7 +239,9 @@ export default function ReviewScreen() {
       setVisibility(defaultVisibility);
       await fetchReviewStatus();
 
-      if (review.syncStatus === 'synced') {
+      if (onSaved) {
+        onSaved();
+      } else if (review.syncStatus === 'synced') {
         Alert.alert('Review posted!');
       } else {
         Alert.alert(
@@ -231,6 +257,29 @@ export default function ReviewScreen() {
       setIsSubmitting(false);
     }
   };
+
+  usePreventRemove(hasUnsavedChanges, ({ data }) => {
+    Alert.alert(
+      'Post review before leaving?',
+      "Your review hasn't been posted. Would you like to post it before leaving?",
+      [
+        {
+          text: 'Keep Writing',
+          style: 'cancel',
+        },
+        {
+          text: 'Discard Draft',
+          style: 'destructive',
+          onPress: () => navigation.dispatch(data.action),
+        },
+        {
+          text: 'Post Review',
+          onPress: () =>
+            void handleSubmit(() => setPendingNavigationAction(data.action)),
+        },
+      ]
+    );
+  });
 
   return (
     <ScrollView

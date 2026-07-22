@@ -1,5 +1,6 @@
 // Swap these adapters for HTTP implementations when the AWS API is ready.
 export { firebaseAuthService as authService } from '@/services/firebase/authService';
+export { firebaseAccountDeletionService as accountDeletionService } from '@/services/firebase/accountDeletionService';
 export { firebaseFollowService as followService } from '@/services/firebase/followService';
 export { firebaseProfileService as profileService } from '@/services/firebase/profileService';
 export { firebaseSettingsService as settingsService } from '@/services/firebase/settingsService';
@@ -15,6 +16,7 @@ import { sqliteCachedReviewRepository } from '@/services/local/sqliteCachedRevie
 import { sqliteMovieCacheRepository } from '@/services/local/sqliteMovieCacheRepository';
 import { sqlitePendingReviewRepository } from '@/services/local/sqlitePendingReviewRepository';
 import { sqlitePosterCacheRepository } from '@/services/local/sqlitePosterCacheRepository';
+import { netInfoConnectivityService } from '@/services/local/netInfoConnectivityService';
 import { expoPosterFileStore } from '@/services/local/expoPosterFileStore';
 import { createCachedMovieCatalogService } from '@/services/movies/cachedMovieCatalogService';
 import { createMovieCacheMaintenanceService } from '@/services/movies/movieCacheMaintenanceService';
@@ -26,7 +28,8 @@ import { createPosterCacheService } from '@/services/movies/posterCacheService';
 const offlineReviewService = createOfflineReviewService(
   sqlitePendingReviewRepository,
   sqliteCachedReviewRepository,
-  firebaseReviewService
+  firebaseReviewService,
+  netInfoConnectivityService
 );
 
 export const communityFeedService = createCommunityFeedService(

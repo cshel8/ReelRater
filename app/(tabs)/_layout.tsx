@@ -35,6 +35,7 @@ export default function Layout() {
     return (
         <Tabs
             screenOptions={{
+                popToTopOnBlur: true,
                 tabBarActiveTintColor: colors.reviewAccent,
                 tabBarInactiveTintColor: '#737A86',
                 tabBarLabelStyle: {

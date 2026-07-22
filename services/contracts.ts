@@ -26,6 +26,14 @@ export interface AuthService {
   ): () => void;
 }
 
+export interface AccountDeletionService {
+  deleteCurrentAccount(password: string): Promise<void>;
+}
+
+export interface ConnectivityService {
+  isOnline(): Promise<boolean>;
+}
+
 export interface ProfileService {
   create(userId: string, input: CreateUserProfileInput): Promise<UserProfile>;
   get(userId: string): Promise<UserProfile | null>;

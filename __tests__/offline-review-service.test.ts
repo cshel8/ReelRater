@@ -85,6 +85,14 @@ function createMemoryCache(initialReviews: Review[] = []) {
         .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
         .slice(0, 5);
     }),
+    save: jest.fn(async (_userId, review) => {
+      cachedReviews = [
+        review,
+        ...cachedReviews.filter((candidate) => candidate.id !== review.id),
+      ]
+        .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
+        .slice(0, 5);
+    }),
     remove: jest.fn(async (_userId, reviewId) => {
       cachedReviews = cachedReviews.filter((review) => review.id !== reviewId);
     }),
@@ -178,6 +186,62 @@ describe('offline review service', () => {
     expect(updatedReview.syncStatus).toBe('failed');
     expect(operations[0].reviewId).toBe('existing-review');
     expect(operations[0].payload?.reviewText).toBe('Updated while offline');
+  });
+
+  it('saves an offline edit immediately without waiting for Firebase', async () => {
+    const { operations, repository } = createMemoryRepository();
+    const cache = createMemoryCache();
+    const remoteService = createRemoteService();
+    const reviewService = createOfflineReviewService(
+      repository,
+      cache.repository,
+      remoteService,
+      { isOnline: jest.fn().mockResolvedValue(false) }
+    );
+
+    const updatedReview = await reviewService.update('user-1', {
+      id: 'existing-review',
+      movieTitle: 'Arrival',
+      reviewText: 'Saved locally while offline',
+      rating: '5',
+      visibility: 'private',
+      createdAt: '2026-07-18T12:00:00.000Z',
+      syncStatus: 'synced',
+    });
+
+    expect(remoteService.save).not.toHaveBeenCalled();
+    expect(updatedReview.syncStatus).toBe('pending');
+    expect(operations).toHaveLength(1);
+    expect(cache.getCachedReviews()[0].reviewText).toBe(
+      'Saved locally while offline'
+    );
+  });
+
+  it('loads cached reviews without contacting Firebase while offline', async () => {
+    const { repository } = createMemoryRepository();
+    const cachedReview: Review = {
+      id: 'cached-review',
+      movieTitle: 'Arrival',
+      reviewText: 'Available offline',
+      rating: '5',
+      visibility: 'private',
+      createdAt: '2026-07-18T12:00:00.000Z',
+      syncStatus: 'synced',
+    };
+    const cache = createMemoryCache([cachedReview]);
+    const remoteService = createRemoteService();
+    const reviewService = createOfflineReviewService(
+      repository,
+      cache.repository,
+      remoteService,
+      { isOnline: jest.fn().mockResolvedValue(false) }
+    );
+
+    const result = await reviewService.listForUser('user-1');
+
+    expect(remoteService.listForUser).not.toHaveBeenCalled();
+    expect(result.remoteAvailable).toBe(false);
+    expect(result.reviews).toEqual([cachedReview]);
   });
 
   it('uses only the five newest synchronized reviews when offline', async () => {

@@ -23,4 +23,13 @@ describe('About and credits', () => {
 
     expect(openUrl).toHaveBeenCalledWith('https://www.themoviedb.org');
   });
+
+  it('explains which reviews remain available offline', () => {
+    const screen = render(<AboutCreditsScreen />);
+
+    expect(screen.getByText('Offline Access')).toBeTruthy();
+    expect(
+      screen.getByText(/Your five most recent reviews are kept available/)
+    ).toBeTruthy();
+  });
 });

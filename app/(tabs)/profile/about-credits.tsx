@@ -67,6 +67,16 @@ export default function AboutCreditsScreen() {
           />
         </Pressable>
       </View>
+
+      <View style={styles.section}>
+        <Text style={styles.heading}>Offline Access</Text>
+        <Text style={styles.body}>
+          Your five most recent reviews are kept available on this device for
+          offline access. Reviews and edits created while offline are saved on
+          this device and synchronize automatically after you reconnect. Older
+          reviews appear when an internet connection is available.
+        </Text>
+      </View>
     </ScrollView>
   );
 }

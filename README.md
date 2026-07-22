@@ -139,6 +139,22 @@ GET /api/v1/movies/search?query=Arrival
 GET /api/v1/movies/{catalogId}
 ```
 
+### Account deletion backend
+
+Account deletion uses `DELETE /api/v1/account`. The app reauthenticates the
+user, sends a fresh Firebase ID token, and the server deletes Firestore data,
+follower relationships, profile images, and Firebase Authentication before the
+app clears account-specific SQLite data.
+
+Never put Firebase Admin credentials in Expo environment variables or commit
+them to Git. The Express server needs Application Default Credentials, such as
+a service-account file mounted from a deployment secret and referenced by
+`GOOGLE_APPLICATION_CREDENTIALS`. The adapter also supports
+`FIREBASE_PROJECT_ID` and `FIREBASE_STORAGE_BUCKET`.
+
+The mobile app refuses to send an account token to a non-HTTPS remote API.
+Localhost HTTP remains available for development.
+
 Run the server checks with:
 
 ```bash

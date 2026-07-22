@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router, useFocusEffect } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -14,6 +14,7 @@ import {
 import { ReviewPoster } from '@/components/reviews/ReviewPoster';
 import { ReviewStars } from '@/components/reviews/ReviewStars';
 import { colors } from '@/constants/colors';
+import { useResetTabScroll } from '@/hooks/useResetTabScroll';
 import { communityFeedService } from '@/services';
 import { userStore } from '@/store/userStore';
 import type { CommunityReview, PublicUserProfile } from '@/types/domain';
@@ -94,6 +95,7 @@ function CommunityReviewCard({ review }: { review: CommunityReview }) {
 }
 
 export default function CommunityScreen() {
+  const listRef = useRef<FlatList<CommunityReview>>(null);
   const userId = userStore((state) => state.userId);
   const [reviews, setReviews] = useState<CommunityReview[]>([]);
   const [followsAnyone, setFollowsAnyone] = useState(false);
@@ -147,6 +149,7 @@ export default function CommunityScreen() {
       void loadFeed();
     }, [loadFeed])
   );
+  useResetTabScroll(listRef);
 
   if (isLoading) {
     return (
@@ -159,6 +162,7 @@ export default function CommunityScreen() {
 
   return (
     <FlatList
+      ref={listRef}
       style={styles.list}
       contentContainerStyle={[
         styles.listContent,

@@ -1,4 +1,5 @@
 import NetInfo from '@react-native-community/netinfo';
+import { Alert } from 'react-native';
 import {
   act,
   fireEvent,
@@ -11,6 +12,24 @@ import {
   reviewService,
   settingsService,
 } from '@/services';
+
+const mockDispatch = jest.fn();
+let mockPreventRemove:
+  | ((options: { data: { action: { type: string } } }) => void)
+  | undefined;
+
+jest.mock('expo-router', () => ({
+  useNavigation: () => ({ dispatch: mockDispatch }),
+}));
+
+jest.mock('expo-router/react-navigation', () => ({
+  usePreventRemove: (
+    preventRemove: boolean,
+    callback: (options: { data: { action: { type: string } } }) => void
+  ) => {
+    mockPreventRemove = preventRemove ? callback : undefined;
+  },
+}));
 
 jest.mock('@expo/vector-icons', () => ({
   Ionicons: 'Ionicons',
@@ -45,6 +64,7 @@ jest.mock('@/services', () => ({
 describe('Write Review screen', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockPreventRemove = undefined;
     (reviewService.listForUser as jest.Mock).mockResolvedValue({
       reviews: [],
       pendingCount: 0,
@@ -201,5 +221,49 @@ describe('Write Review screen', () => {
       });
     });
     expect(screen.queryByText(/Offline mode/)).toBeNull();
+  });
+
+  it('offers to post a completed draft before leaving', async () => {
+    const alertSpy = jest.spyOn(Alert, 'alert');
+    const screen = render(<ReviewScreen />);
+
+    fireEvent.changeText(screen.getByLabelText('Movie title'), 'Arrival');
+    fireEvent.press(screen.getByLabelText('4 out of 5 stars'));
+    fireEvent.changeText(
+      screen.getByLabelText('Your review'),
+      'Excellent science fiction.'
+    );
+
+    const backAction = { type: 'GO_BACK' };
+    act(() => {
+      mockPreventRemove?.({ data: { action: backAction } });
+    });
+
+    expect(alertSpy).toHaveBeenCalledWith(
+      'Post review before leaving?',
+      "Your review hasn't been posted. Would you like to post it before leaving?",
+      expect.any(Array)
+    );
+
+    const buttons = alertSpy.mock.calls.at(-1)?.[2];
+    const postButton = buttons?.find((button) => button.text === 'Post Review');
+    await act(async () => {
+      postButton?.onPress?.();
+    });
+
+    await waitFor(() => {
+      expect(reviewService.create).toHaveBeenCalled();
+      expect(mockDispatch).toHaveBeenCalledWith(backAction);
+    });
+  });
+
+  it('does not intercept leaving when the form is blank', async () => {
+    render(<ReviewScreen />);
+
+    await waitFor(() => {
+      expect(settingsService.get).toHaveBeenCalledWith('user-1');
+    });
+
+    expect(mockPreventRemove).toBeUndefined();
   });
 });

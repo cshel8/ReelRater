@@ -5,17 +5,28 @@ import {
     Image,
     Pressable,
     ActivityIndicator,
+    Alert,
+    Modal,
     ScrollView,
+    TextInput,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useCallback, useState } from 'react';
+import NetInfo from '@react-native-community/netinfo';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { router, useFocusEffect } from 'expo-router';
 import { colors } from '@/constants/colors';
+import { useResetTabScroll } from '@/hooks/useResetTabScroll';
 import { userStore } from '@/store/userStore';
 import * as ImagePicker from 'expo-image-picker';
-import { authService, followService, profileService } from '@/services';
+import {
+    accountDeletionService,
+    authService,
+    followService,
+    profileService,
+} from '@/services';
 
 export default function Profile() {
+    const scrollRef = useRef<ScrollView>(null);
     const {
         displayName,
         handle,
@@ -28,42 +39,51 @@ export default function Profile() {
     } = userStore();
     const [ loading, setLoading ] = useState( false );
     const [ signingOut, setSigningOut ] = useState( false );
-    const [ followerCount, setFollowerCount ] = useState( 0 );
-    const [ followingCount, setFollowingCount ] = useState( 0 );
+    const [ followerCount, setFollowerCount ] = useState<number | null>(null);
+    const [ followingCount, setFollowingCount ] = useState<number | null>(null);
     const [ requestCount, setRequestCount ] = useState( 0 );
+    const [ isOffline, setIsOffline ] = useState(false);
+    const [ deletionModalVisible, setDeletionModalVisible ] = useState(false);
+    const [ deletionPassword, setDeletionPassword ] = useState('');
+    const [ deletingAccount, setDeletingAccount ] = useState(false);
+
+    const fetchUserData = useCallback(async () => {
+        if (!userId) return;
+        try {
+            const [profile, followers, following, requests] = await Promise.all([
+                profileService.get(userId),
+                followService.listFollowers(userId),
+                followService.listFollowing(userId),
+                followService.listPendingRequests(userId),
+            ]);
+            if (profile) {
+                if (profile.displayName) setDisplayName(profile.displayName);
+                if (profile.handle) setHandle(profile.handle);
+                setProfileImage(profile.profileImage);
+            }
+            setFollowerCount(followers.length);
+            setFollowingCount(following.length);
+            setRequestCount(requests.length);
+        } catch (error: any) {
+            setFollowerCount(null);
+            setFollowingCount(null);
+            console.log('Error fetching user data:', error.message);
+        }
+    }, [setDisplayName, setHandle, setProfileImage, userId]);
 
     useFocusEffect(useCallback(() => {
-        if ( !userId ) return;
-        let active = true;
-
-        const fetchUserData = async () => {
-            try {
-                const [profile, followers, following, requests] = await Promise.all([
-                    profileService.get(userId),
-                    followService.listFollowers(userId),
-                    followService.listFollowing(userId),
-                    followService.listPendingRequests(userId),
-                ]);
-                if ( active && profile ) {
-                    if ( profile.displayName ) setDisplayName( profile.displayName );
-                    if ( profile.handle ) setHandle( profile.handle );
-                    setProfileImage( profile.profileImage );
-                }
-                if ( active ) {
-                    setFollowerCount(followers.length);
-                    setFollowingCount(following.length);
-                    setRequestCount(requests.length);
-                }
-            } catch ( error: any ) {
-                console.log( 'Error fetching user data:', error.message );
-            }
-        };
-
-        fetchUserData();
-        return () => {
-            active = false;
-        };
-    }, [setDisplayName, setHandle, setProfileImage, userId]));
+        void fetchUserData();
+    }, [fetchUserData]));
+    useEffect(
+        () => NetInfo.addEventListener((state) => {
+            const offline =
+                state.isConnected === false || state.isInternetReachable === false;
+            setIsOffline(offline);
+            if (!offline) void fetchUserData();
+        }),
+        [fetchUserData]
+    );
+    useResetTabScroll(scrollRef);
 
     const pickImage = async () => {
         const result = await ImagePicker.launchImageLibraryAsync({
@@ -105,8 +125,32 @@ export default function Profile() {
         }
     };
 
+    const handleDeleteAccount = async () => {
+        if (!deletionPassword || deletingAccount) return;
+
+        setDeletingAccount(true);
+        try {
+            await accountDeletionService.deleteCurrentAccount(deletionPassword);
+            setUserId(null);
+            setDisplayName('');
+            setHandle('');
+            setProfileImage(null);
+            setDeletionPassword('');
+            setDeletionModalVisible(false);
+            router.replace('/login');
+        } catch (error) {
+            Alert.alert(
+                'Could not delete account',
+                error instanceof Error ? error.message : 'Unknown deletion error'
+            );
+        } finally {
+            setDeletingAccount(false);
+        }
+    };
+
     return (
         <ScrollView
+            ref={scrollRef}
             contentContainerStyle={styles.container}
             showsVerticalScrollIndicator={false}
         >
@@ -134,6 +178,7 @@ export default function Profile() {
                     <Text style={ styles.handle }>@{handle}</Text>
                 ) : null}
 
+                {!isOffline && followerCount !== null && followingCount !== null ? (
                 <View style={styles.connectionCounts}>
                     <Pressable
                         accessibilityRole="button"
@@ -159,6 +204,7 @@ export default function Profile() {
                         <Text style={styles.connectionLabel}>Following</Text>
                     </Pressable>
                 </View>
+                ) : null}
 
                 <Pressable
                     onPress={pickImage}
@@ -265,6 +311,88 @@ export default function Profile() {
                     {signingOut ? 'Signing Out...' : 'Sign Out'}
                 </Text>
             </Pressable>
+
+            <Pressable
+                accessibilityRole="button"
+                disabled={deletingAccount}
+                onPress={() =>
+                    Alert.alert(
+                        'Delete your account?',
+                        'This permanently deletes your profile, reviews, settings, follower relationships, profile image, and sign-in account. This cannot be undone.',
+                        [
+                            { text: 'Cancel', style: 'cancel' },
+                            {
+                                text: 'Continue',
+                                style: 'destructive',
+                                onPress: () => setDeletionModalVisible(true),
+                            },
+                        ]
+                    )
+                }
+                style={({ pressed }) => [
+                    styles.deleteAccountButton,
+                    pressed && styles.buttonPressed,
+                ]}
+            >
+                <Text style={styles.deleteAccountButtonText}>Delete Account</Text>
+            </Pressable>
+
+            <Modal
+                animationType="fade"
+                onRequestClose={() => {
+                    if (!deletingAccount) setDeletionModalVisible(false);
+                }}
+                transparent
+                visible={deletionModalVisible}
+            >
+                <View style={styles.deletionModalBackdrop}>
+                    <View style={styles.deletionModalCard}>
+                        <Text style={styles.deletionModalTitle}>Confirm account deletion</Text>
+                        <Text style={styles.deletionModalText}>
+                            Enter your current password to confirm. All account data will be permanently deleted.
+                        </Text>
+                        <TextInput
+                            accessibilityLabel="Current password"
+                            autoCapitalize="none"
+                            autoCorrect={false}
+                            editable={!deletingAccount}
+                            onChangeText={setDeletionPassword}
+                            placeholder="Current password"
+                            secureTextEntry
+                            style={styles.deletionPasswordInput}
+                            textContentType="password"
+                            value={deletionPassword}
+                        />
+                        <View style={styles.deletionModalActions}>
+                            <Pressable
+                                disabled={deletingAccount}
+                                onPress={() => {
+                                    setDeletionPassword('');
+                                    setDeletionModalVisible(false);
+                                }}
+                                style={styles.deletionCancelButton}
+                            >
+                                <Text style={styles.deletionCancelText}>Cancel</Text>
+                            </Pressable>
+                            <Pressable
+                                accessibilityRole="button"
+                                disabled={!deletionPassword || deletingAccount}
+                                onPress={() => void handleDeleteAccount()}
+                                style={({ pressed }) => [
+                                    styles.deletionConfirmButton,
+                                    (!deletionPassword || deletingAccount || pressed) && styles.buttonPressed,
+                                ]}
+                            >
+                                {deletingAccount ? (
+                                    <ActivityIndicator color="#FFFFFF" />
+                                ) : (
+                                    <Text style={styles.deletionConfirmText}>Delete Permanently</Text>
+                                )}
+                            </Pressable>
+                        </View>
+                    </View>
+                </View>
+            </Modal>
         </ScrollView>
     );
 }
@@ -352,6 +480,80 @@ const styles = StyleSheet.create({
     signOutButtonText: {
         color: '#DC2626',
         fontWeight: '600',
+    },
+    deleteAccountButton: {
+        minHeight: 42,
+        marginTop: 12,
+        marginBottom: 8,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    deleteAccountButtonText: {
+        color: '#991B1B',
+        fontWeight: '600',
+    },
+    deletionModalBackdrop: {
+        flex: 1,
+        backgroundColor: 'rgba(20, 20, 24, 0.45)',
+        paddingHorizontal: 22,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    deletionModalCard: {
+        width: '100%',
+        maxWidth: 420,
+        borderRadius: 14,
+        backgroundColor: '#FFFFFF',
+        padding: 22,
+    },
+    deletionModalTitle: {
+        color: '#17171C',
+        fontSize: 20,
+        fontWeight: '700',
+    },
+    deletionModalText: {
+        color: '#626975',
+        fontSize: 14,
+        lineHeight: 20,
+        marginTop: 9,
+    },
+    deletionPasswordInput: {
+        minHeight: 50,
+        borderWidth: 1,
+        borderColor: '#D7DAE0',
+        borderRadius: 9,
+        color: '#1D1D23',
+        fontSize: 16,
+        marginTop: 18,
+        paddingHorizontal: 13,
+    },
+    deletionModalActions: {
+        flexDirection: 'row',
+        justifyContent: 'flex-end',
+        gap: 10,
+        marginTop: 20,
+    },
+    deletionCancelButton: {
+        minHeight: 44,
+        paddingHorizontal: 14,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    deletionCancelText: {
+        color: '#4F5662',
+        fontWeight: '600',
+    },
+    deletionConfirmButton: {
+        minHeight: 44,
+        borderRadius: 8,
+        backgroundColor: '#B91C1C',
+        paddingHorizontal: 15,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    deletionConfirmText: {
+        color: '#FFFFFF',
+        fontWeight: '700',
     },
     findPeopleButton: {
         width: '100%',
