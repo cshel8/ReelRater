@@ -1,8 +1,9 @@
 import type {
   CatalogDataRetention,
-  MovieSummary,
+  MediaSummary,
   Review,
-  ReviewMovieSnapshot,
+  ReviewMediaSnapshot,
+  ReviewMediaTarget,
 } from '@/types/domain';
 import {
   defaultMovieCachePolicy,
@@ -11,9 +12,11 @@ import {
 
 export const UNAVAILABLE_MOVIE_TITLE = 'Movie details temporarily unavailable';
 
-export const createManualMovieSnapshot = (
-  title: string
-): ReviewMovieSnapshot => ({
+export const createManualMediaSnapshot = (
+  title: string,
+  target: ReviewMediaTarget
+): ReviewMediaSnapshot => ({
+  ...target,
   matchStatus: 'manual',
   catalogId: null,
   title: title.trim(),
@@ -22,20 +25,39 @@ export const createManualMovieSnapshot = (
   posterUrl: null,
 });
 
-export const createMatchedMovieSnapshot = (
-  movie: MovieSummary,
+/** @deprecated Prefer createManualMediaSnapshot for new code. */
+export const createManualMovieSnapshot = (title: string) =>
+  createManualMediaSnapshot(title, {
+    mediaType: 'movie',
+    reviewTargetType: 'movie',
+  });
+
+export const createMatchedMediaSnapshot = (
+  media: MediaSummary,
   fetchedAt = new Date(),
   policy: MovieCachePolicy = defaultMovieCachePolicy
-): ReviewMovieSnapshot => {
-  const { catalogDataRetention, ...movieFields } = movie;
+): ReviewMediaSnapshot => {
+  const { catalogDataRetention, ...mediaFields } = media;
   return {
-    ...movieFields,
+    ...mediaFields,
     matchStatus: 'matched',
     catalogDataRetention:
       readCatalogDataRetention(catalogDataRetention) ??
       policy.createWindow(fetchedAt),
   };
 };
+
+/** @deprecated Prefer createMatchedMediaSnapshot for new code. */
+export const createMatchedMovieSnapshot = (
+  movie: Omit<MediaSummary, 'mediaType' | 'reviewTargetType'>,
+  fetchedAt = new Date(),
+  policy: MovieCachePolicy = defaultMovieCachePolicy
+) =>
+  createMatchedMediaSnapshot(
+    { ...movie, mediaType: 'movie', reviewTargetType: 'movie' },
+    fetchedAt,
+    policy
+  );
 
 export const readCatalogDataRetention = (
   value: unknown
@@ -73,15 +95,23 @@ export const readCatalogDataRetention = (
   };
 };
 
-export const readReviewMovieSnapshot = (
+const readReviewMediaTarget = (
+  candidate: Record<string, unknown>
+): ReviewMediaTarget =>
+  candidate.mediaType === 'tv' && candidate.reviewTargetType === 'series'
+    ? { mediaType: 'tv', reviewTargetType: 'series' }
+    : { mediaType: 'movie', reviewTargetType: 'movie' };
+
+export const readReviewMediaSnapshot = (
   value: unknown,
   fallbackTitle: string
-): ReviewMovieSnapshot => {
+): ReviewMediaSnapshot => {
   if (!value || typeof value !== 'object') {
     return createManualMovieSnapshot(fallbackTitle);
   }
 
   const candidate = value as Record<string, unknown>;
+  const reviewTarget = readReviewMediaTarget(candidate);
   const title =
     typeof candidate.title === 'string' && candidate.title.trim()
       ? candidate.title.trim()
@@ -105,6 +135,7 @@ export const readReviewMovieSnapshot = (
     candidate.catalogId
   ) {
     return {
+      ...reviewTarget,
       matchStatus: 'matched',
       catalogId: candidate.catalogId,
       title,
@@ -118,6 +149,7 @@ export const readReviewMovieSnapshot = (
   }
 
   return {
+    ...reviewTarget,
     matchStatus: 'manual',
     catalogId: null,
     title,
@@ -127,8 +159,11 @@ export const readReviewMovieSnapshot = (
   };
 };
 
+/** @deprecated Prefer readReviewMediaSnapshot for new code. */
+export const readReviewMovieSnapshot = readReviewMediaSnapshot;
+
 export const isReviewCatalogDataExpired = (
-  movie: ReviewMovieSnapshot | undefined,
+  movie: ReviewMediaSnapshot | undefined,
   currentTime = new Date()
 ) => {
   if (!movie || movie.matchStatus === 'manual') {
@@ -148,7 +183,7 @@ export const isReviewCatalogDataExpired = (
 };
 
 export const isReviewCatalogDataRefreshDue = (
-  movie: ReviewMovieSnapshot | undefined,
+  movie: ReviewMediaSnapshot | undefined,
   currentTime = new Date()
 ) => {
   if (!movie || movie.matchStatus === 'manual') {
@@ -167,9 +202,9 @@ export const isReviewCatalogDataRefreshDue = (
 };
 
 export const getDisplayReviewMovie = (
-  movie: ReviewMovieSnapshot | undefined,
+  movie: ReviewMediaSnapshot | undefined,
   currentTime = new Date()
-): ReviewMovieSnapshot | undefined => {
+): ReviewMediaSnapshot | undefined => {
   if (!movie || movie.matchStatus === 'manual') {
     return movie;
   }
@@ -178,6 +213,9 @@ export const getDisplayReviewMovie = (
   }
 
   return {
+    ...(movie.mediaType === 'tv'
+      ? ({ mediaType: 'tv', reviewTargetType: 'series' } as const)
+      : ({ mediaType: 'movie', reviewTargetType: 'movie' } as const)),
     matchStatus: 'matched',
     catalogId: movie.catalogId,
     title: UNAVAILABLE_MOVIE_TITLE,
@@ -195,6 +233,23 @@ export const getDisplayReviewMovieTitle = (
   isReviewCatalogDataExpired(review.movie, currentTime)
     ? UNAVAILABLE_MOVIE_TITLE
     : review.movieTitle;
+
+export const getDisplayReviewMovieMetadata = (
+  review: Pick<Review, 'movie'>,
+  currentTime = new Date()
+): string | null => {
+  const movie = getDisplayReviewMovie(review.movie, currentTime);
+  if (!movie) {
+    return null;
+  }
+
+  const metadata = [
+    movie.releaseYear === null ? null : String(movie.releaseYear),
+    movie.genres.length > 0 ? movie.genres.join(', ') : null,
+  ].filter((value): value is string => Boolean(value));
+
+  return metadata.length > 0 ? metadata.join(' · ') : null;
+};
 
 export const redactExpiredReviewCatalogData = <T extends Review>(
   review: T,

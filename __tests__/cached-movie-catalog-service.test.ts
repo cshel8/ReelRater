@@ -4,6 +4,8 @@ import type { MovieCacheRepository } from '@/services/local/movieCacheTypes';
 import type { MovieSummary } from '@/types/domain';
 
 const arrival: MovieSummary = {
+  mediaType: 'movie',
+  reviewTargetType: 'movie',
   catalogId: 'tmdb:329865',
   title: 'Arrival',
   releaseYear: 2016,
@@ -31,13 +33,13 @@ describe('cached movie catalog service', () => {
     const remote = createRemote();
     const cache = createCache();
     remote.search.mockResolvedValue({
-      movies: [arrival],
+      items: [arrival],
       nextCursor: 'next-page',
     });
     const service = createCachedMovieCatalogService(remote, cache);
 
     await expect(service.search('Arrival')).resolves.toEqual({
-      movies: [arrival],
+      items: [arrival],
       nextCursor: 'next-page',
     });
     expect(cache.cache).toHaveBeenCalledWith([arrival]);
@@ -52,8 +54,10 @@ describe('cached movie catalog service', () => {
 
     await expect(
       service.search('Arrival', { maximumResults: 10 })
-    ).resolves.toEqual({ movies: [arrival], nextCursor: null });
-    expect(cache.search).toHaveBeenCalledWith('Arrival', 10);
+    ).resolves.toEqual({ items: [arrival], nextCursor: null });
+    expect(cache.search).toHaveBeenCalledWith('Arrival', {
+      maximumResults: 10,
+    });
   });
 
   it('does not reuse a remote pagination cursor against local ordering', async () => {

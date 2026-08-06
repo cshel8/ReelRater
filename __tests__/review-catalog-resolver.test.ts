@@ -47,6 +47,8 @@ describe('review catalog resolver', () => {
     const catalog = createCatalog();
     const review = createReview('2026-01-01T12:00:00.000Z');
     catalog.getById.mockResolvedValue({
+      mediaType: 'movie',
+      reviewTargetType: 'movie',
       catalogId: 'catalog:1',
       title: 'Arrival Updated',
       releaseYear: 2016,

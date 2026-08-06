@@ -14,6 +14,9 @@ function createServices() {
   } as unknown as jest.Mocked<UserDirectoryService>;
   const reviewService = {
     listVisibleFromAuthors: jest.fn(),
+    listVisibleFromAuthor: jest.fn(),
+    listVisibleFromAuthorPage: jest.fn(),
+    getVisibleFromAuthor: jest.fn(),
   } as jest.Mocked<RemoteCommunityReviewService>;
 
   return { followService, directoryService, reviewService };
@@ -73,12 +76,20 @@ describe('Community feed service', () => {
       services.reviewService
     );
 
-    const result = await communityService.list('viewer-1', 20);
+    const result = await communityService.list('viewer-1', {
+      maximumResults: 20,
+      mediaFilter: 'tv',
+      sort: 'highest',
+    });
 
     expect(services.reviewService.listVisibleFromAuthors).toHaveBeenCalledWith(
       'viewer-1',
       ['author-1'],
-      20
+      {
+        maximumResults: 20,
+        mediaFilter: 'tv',
+        sort: 'highest',
+      }
     );
     expect(result.followsAnyone).toBe(true);
     expect(result.reviews[0]).toMatchObject({

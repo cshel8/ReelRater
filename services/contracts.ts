@@ -2,13 +2,16 @@ import type {
   AuthUser,
   AccountPrivacy,
   CommunityReview,
+  CommunityMediaFilter,
+  CommunitySort,
   CreateReviewInput,
   CreateUserProfileInput,
   FollowRelationship,
-  MovieCatalogId,
-  MovieDetails,
-  MovieSearchOptions,
-  MovieSearchPage,
+  MediaCatalogId,
+  MediaDetails,
+  MediaSearchOptions,
+  MediaSearchPage,
+  MediaSummary,
   PublicUserProfile,
   Review,
   SharedReview,
@@ -41,21 +44,28 @@ export interface ProfileService {
 }
 
 /**
- * Provider-independent access to movie search and details.
+ * Provider-independent access to media search and details.
  *
  * A TMDB, another vendor, or a local cache adapter can implement this
  * contract without changing screens or review services.
  */
-export interface MovieCatalogService {
+export interface MediaCatalogService {
   search(
     query: string,
-    options?: MovieSearchOptions
-  ): Promise<MovieSearchPage>;
-  getById(catalogId: MovieCatalogId): Promise<MovieDetails | null>;
+    options?: MediaSearchOptions
+  ): Promise<MediaSearchPage>;
+  getById(catalogId: MediaCatalogId): Promise<MediaDetails | null>;
 }
+
+/** @deprecated Prefer MediaCatalogService for new code. */
+export type MovieCatalogService = MediaCatalogService;
 
 export interface SettingsService {
   get(userId: string): Promise<UserSettings | null>;
+  initializeForNewUser(
+    userId: string,
+    defaultReviewVisibility: UserSettings['defaultReviewVisibility']
+  ): Promise<void>;
   setDefaultReviewVisibility(
     userId: string,
     visibility: UserSettings['defaultReviewVisibility']
@@ -67,10 +77,18 @@ export interface SettingsService {
       defaultReviewVisibility: UserSettings['defaultReviewVisibility'];
     }
   ): Promise<void>;
+  setCommunityDefaults(
+    userId: string,
+    preferences: Pick<
+      UserSettings,
+      'defaultMediaFilter' | 'defaultSort'
+    >
+  ): Promise<void>;
 }
 
 export interface ReviewService {
   listForUser(userId: string): Promise<ReviewListResult>;
+  findForMedia(userId: string, media: MediaSummary): Promise<Review | null>;
   create(userId: string, input: CreateReviewInput): Promise<Review>;
   update(userId: string, review: Review): Promise<Review>;
   remove(userId: string, reviewId: string): Promise<void>;
@@ -101,16 +119,88 @@ export interface CommunityFeedResult {
   followsAnyone: boolean;
 }
 
+export type CommunityReviewMediaFilter = CommunityMediaFilter;
+export type CommunityReviewSort = CommunitySort;
+
+export type CommunityFeedOptions = {
+  maximumResults?: number;
+  mediaFilter?: CommunityReviewMediaFilter;
+  /**
+   * A temporary, on-screen search term. It is intentionally not a saved
+   * Community preference.
+   */
+  searchQuery?: string;
+  sort?: CommunityReviewSort;
+};
+
 export interface CommunityFeedService {
-  list(viewerId: string, maximumResults?: number): Promise<CommunityFeedResult>;
+  list(
+    viewerId: string,
+    options?: CommunityFeedOptions
+  ): Promise<CommunityFeedResult>;
+}
+
+export interface PublicProfileReviewResult {
+  reviews: SharedReview[];
+  canSeeFollowersOnly: boolean;
+}
+
+export interface PublicProfileReviewPageResult
+  extends PublicProfileReviewResult {
+  nextCursor: string | null;
+}
+
+export interface PublicProfileReviewService {
+  list(
+    viewerId: string,
+    profileUserId: string,
+    maximumResults?: number
+  ): Promise<PublicProfileReviewResult>;
+  listPage(
+    viewerId: string,
+    profileUserId: string,
+    options?: {
+      cursor?: string;
+      maximumResults?: number;
+    }
+  ): Promise<PublicProfileReviewPageResult>;
+  getById(
+    viewerId: string,
+    profileUserId: string,
+    reviewId: string
+  ): Promise<SharedReview | null>;
 }
 
 export interface RemoteCommunityReviewService {
   listVisibleFromAuthors(
     viewerId: string,
     authorIds: string[],
+    options?: CommunityFeedOptions
+  ): Promise<SharedReview[]>;
+  listVisibleFromAuthorPage(
+    viewerId: string,
+    authorId: string,
+    includeFollowersOnly: boolean,
+    options?: {
+      cursor?: string;
+      maximumResults?: number;
+    }
+  ): Promise<{
+    reviews: SharedReview[];
+    nextCursor: string | null;
+  }>;
+  listVisibleFromAuthor(
+    viewerId: string,
+    authorId: string,
+    includeFollowersOnly: boolean,
     maximumResults?: number
   ): Promise<SharedReview[]>;
+  getVisibleFromAuthor(
+    viewerId: string,
+    authorId: string,
+    reviewId: string,
+    includeFollowersOnly: boolean
+  ): Promise<SharedReview | null>;
 }
 
 export interface FollowService {

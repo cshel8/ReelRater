@@ -7,18 +7,21 @@ export { firebaseSettingsService as settingsService } from '@/services/firebase/
 export { firebaseUserDirectoryService as userDirectoryService } from '@/services/firebase/userDirectoryService';
 
 import { createCommunityFeedService } from '@/services/community/communityFeedService';
+import { createPublicProfileReviewService } from '@/services/community/publicProfileReviewService';
 import { firebaseCommunityReviewService } from '@/services/firebase/communityReviewService';
 import { firebaseFollowService } from '@/services/firebase/followService';
 import { firebaseUserDirectoryService } from '@/services/firebase/userDirectoryService';
 import { firebaseReviewService } from '@/services/firebase/reviewService';
-import { httpMovieCatalogService } from '@/services/http/movieCatalogService';
+import { httpMediaCatalogService } from '@/services/http/movieCatalogService';
 import { sqliteCachedReviewRepository } from '@/services/local/sqliteCachedReviewRepository';
 import { sqliteMovieCacheRepository } from '@/services/local/sqliteMovieCacheRepository';
 import { sqlitePendingReviewRepository } from '@/services/local/sqlitePendingReviewRepository';
 import { sqlitePosterCacheRepository } from '@/services/local/sqlitePosterCacheRepository';
+import { sqliteReviewTargetIdentityRepository } from '@/services/local/sqliteReviewTargetIdentityRepository';
+import { asyncStorageCommunityPreferenceRepository } from '@/services/local/asyncStorageCommunityPreferenceRepository';
 import { netInfoConnectivityService } from '@/services/local/netInfoConnectivityService';
 import { expoPosterFileStore } from '@/services/local/expoPosterFileStore';
-import { createCachedMovieCatalogService } from '@/services/movies/cachedMovieCatalogService';
+import { createCachedMediaCatalogService } from '@/services/movies/cachedMovieCatalogService';
 import { createMovieCacheMaintenanceService } from '@/services/movies/movieCacheMaintenanceService';
 import { createOfflineReviewService } from '@/services/reviews/offlineReviewService';
 import { createCatalogAwareReviewService } from '@/services/reviews/catalogAwareReviewService';
@@ -29,7 +32,9 @@ const offlineReviewService = createOfflineReviewService(
   sqlitePendingReviewRepository,
   sqliteCachedReviewRepository,
   firebaseReviewService,
-  netInfoConnectivityService
+  netInfoConnectivityService,
+  undefined,
+  sqliteReviewTargetIdentityRepository
 );
 
 export const communityFeedService = createCommunityFeedService(
@@ -38,14 +43,25 @@ export const communityFeedService = createCommunityFeedService(
   firebaseCommunityReviewService
 );
 
-export const movieCatalogService = createCachedMovieCatalogService(
-  httpMovieCatalogService,
+export const communityPreferenceRepository =
+  asyncStorageCommunityPreferenceRepository;
+
+export const publicProfileReviewService = createPublicProfileReviewService(
+  firebaseFollowService,
+  firebaseCommunityReviewService
+);
+
+export const mediaCatalogService = createCachedMediaCatalogService(
+  httpMediaCatalogService,
   sqliteMovieCacheRepository
 );
 
+/** @deprecated Prefer mediaCatalogService for new code. */
+export const movieCatalogService = mediaCatalogService;
+
 const catalogAwareReviewService = createCatalogAwareReviewService(
   offlineReviewService,
-  movieCatalogService
+  mediaCatalogService
 );
 
 export const posterCacheService = createPosterCacheService(
@@ -60,6 +76,6 @@ export const reviewService = createPosterAwareReviewService(
 
 export const movieCacheMaintenanceService =
   createMovieCacheMaintenanceService(
-    httpMovieCatalogService,
+    httpMediaCatalogService,
     sqliteMovieCacheRepository
   );

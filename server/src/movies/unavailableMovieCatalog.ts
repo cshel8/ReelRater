@@ -5,7 +5,7 @@ import {
 
 const unavailable = (): never => {
   throw new MovieCatalogUnavailableError(
-    'Movie search is not configured. Set TMDB_READ_ACCESS_TOKEN on the API server.'
+    'Media search is not configured. Set TMDB_READ_ACCESS_TOKEN on the API server.'
   );
 };
 

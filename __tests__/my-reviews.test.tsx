@@ -152,13 +152,75 @@ describe('My Reviews screen', () => {
     const screen = render(<MyReviewsScreen />);
     await screen.findByText('Arrival');
 
-    fireEvent.press(screen.getByLabelText('Sort reviews'));
+    fireEvent.press(screen.getByLabelText('Filter and sort reviews'));
     fireEvent.press(screen.getByText('Highest rated'));
 
     const titles = screen
       .getAllByTestId('review-title')
       .map((title) => title.props.children);
     expect(titles).toEqual(['Parasite', 'Arrival']);
+  });
+
+  it('combines the media filter with review search', async () => {
+    (reviewService.listForUser as jest.Mock).mockResolvedValue({
+      reviews: [
+        {
+          id: 'review-1',
+          movieTitle: 'Arrival',
+          reviewText: 'Excellent science fiction.',
+          rating: '5',
+          createdAt: '2026-07-18T12:00:00.000Z',
+          syncStatus: 'synced',
+        },
+        {
+          id: 'review-2',
+          movieTitle: 'Dragon Ball Z Kai',
+          movie: {
+            mediaType: 'tv',
+            reviewTargetType: 'series',
+            matchStatus: 'manual',
+            catalogId: null,
+            title: 'Dragon Ball Z Kai',
+            releaseYear: null,
+            genres: [],
+            posterUrl: null,
+          },
+          reviewText: 'A streamlined version of a classic series.',
+          rating: '4',
+          createdAt: '2026-07-17T12:00:00.000Z',
+          syncStatus: 'synced',
+        },
+      ],
+      pendingCount: 0,
+      remoteAvailable: true,
+    });
+    const screen = render(<MyReviewsScreen />);
+    await screen.findByText('Arrival');
+
+    fireEvent.press(screen.getByLabelText('Filter and sort reviews'));
+    fireEvent.press(screen.getByText('Movies'));
+    fireEvent.press(screen.getByText('Done'));
+    expect(screen.getByText('Arrival')).toBeTruthy();
+    expect(screen.queryByText('Dragon Ball Z Kai')).toBeNull();
+
+    fireEvent.press(screen.getByLabelText('Filter and sort reviews'));
+    fireEvent.press(screen.getByText('TV Shows'));
+    fireEvent.press(screen.getByText('Done'));
+    expect(screen.getByText('Dragon Ball Z Kai')).toBeTruthy();
+    expect(screen.queryByText('Arrival')).toBeNull();
+
+    fireEvent.press(screen.getByLabelText('Search reviews'));
+    fireEvent.changeText(
+      screen.getByLabelText('Search your reviews'),
+      'excellent'
+    );
+    expect(screen.getByText('No matching reviews')).toBeTruthy();
+
+    fireEvent.changeText(
+      screen.getByLabelText('Search your reviews'),
+      'classic'
+    );
+    expect(screen.getByText('Dragon Ball Z Kai')).toBeTruthy();
   });
 
   it('searches movie titles and review text when search is opened', async () => {

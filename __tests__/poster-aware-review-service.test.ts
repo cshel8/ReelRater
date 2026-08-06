@@ -7,6 +7,8 @@ const createReview = (index: number): Review => ({
   id: `review-${index}`,
   movieTitle: `Movie ${index}`,
   movie: {
+    mediaType: 'movie',
+    reviewTargetType: 'movie',
     matchStatus: 'matched',
     catalogId: `catalog:${index}`,
     title: `Movie ${index}`,
@@ -28,6 +30,7 @@ const createReview = (index: number): Review => ({
 
 const createBaseService = (): jest.Mocked<ReviewService> => ({
   listForUser: jest.fn(),
+  findForMedia: jest.fn(),
   create: jest.fn(),
   update: jest.fn(),
   remove: jest.fn(),

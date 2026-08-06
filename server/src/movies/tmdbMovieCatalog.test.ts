@@ -52,9 +52,11 @@ test('TMDB adapter normalizes search results and keeps pagination opaque', async
   const catalog = new TmdbMovieCatalog('test-token', fetchMock);
   const firstPage = await catalog.search('Arrival');
 
-  assert.deepEqual(firstPage.movies, [
+  assert.deepEqual(firstPage.items, [
     {
-      catalogId: 'tmdb:329865',
+      mediaType: 'movie',
+      reviewTargetType: 'movie',
+      catalogId: 'tmdb:movie:329865',
       title: 'Arrival',
       releaseYear: 2016,
       genres: ['Drama', 'Science Fiction'],
@@ -103,11 +105,91 @@ test('TMDB adapter normalizes movie details', async () => {
   const catalog = new TmdbMovieCatalog('test-token', fetchMock);
 
   assert.deepEqual(await catalog.getById('tmdb:329865'), {
-    catalogId: 'tmdb:329865',
+    mediaType: 'movie',
+    reviewTargetType: 'movie',
+    catalogId: 'tmdb:movie:329865',
     title: 'Arrival',
     releaseYear: 2016,
     genres: ['Science Fiction'],
     posterUrl: 'https://image.example/w500/arrival.jpg',
     overview: 'A linguist works with the military.',
+  });
+});
+
+test('TMDB adapter normalizes TV series search and details', async () => {
+  const fetchMock = (async (input: string | URL | Request) => {
+    const url = new URL(input instanceof Request ? input.url : input);
+    if (url.pathname.endsWith('/configuration')) {
+      return Response.json({
+        images: {
+          secure_base_url: 'https://image.example/',
+          poster_sizes: ['w342'],
+        },
+      });
+    }
+    if (url.pathname.endsWith('/genre/tv/list')) {
+      return Response.json({
+        genres: [
+          { id: 16, name: 'Animation' },
+          { id: 10759, name: 'Action & Adventure' },
+        ],
+      });
+    }
+    if (url.pathname.endsWith('/search/tv')) {
+      return Response.json({
+        page: 1,
+        total_pages: 1,
+        results: [
+          {
+            id: 61709,
+            name: 'Dragon Ball Z Kai',
+            first_air_date: '2009-04-05',
+            genre_ids: [16, 10759],
+            poster_path: '/kai.jpg',
+          },
+        ],
+      });
+    }
+    if (url.pathname.endsWith('/tv/61709')) {
+      return Response.json({
+        id: 61709,
+        name: 'Dragon Ball Z Kai',
+        first_air_date: '2009-04-05',
+        genres: [{ id: 16, name: 'Animation' }],
+        poster_path: '/kai.jpg',
+        overview: 'An updated version of Dragon Ball Z.',
+      });
+    }
+    throw new Error(`Unexpected request: ${url}`);
+  }) as typeof fetch;
+
+  const catalog = new TmdbMovieCatalog('test-token', fetchMock);
+
+  assert.deepEqual(
+    await catalog.search('Dragon Ball Z Kai', { mediaType: 'tv' }),
+    {
+      items: [
+        {
+          mediaType: 'tv',
+          reviewTargetType: 'series',
+          catalogId: 'tmdb:tv:61709',
+          title: 'Dragon Ball Z Kai',
+          releaseYear: 2009,
+          genres: ['Animation', 'Action & Adventure'],
+          posterUrl: 'https://image.example/w342/kai.jpg',
+        },
+      ],
+      nextCursor: null,
+    }
+  );
+  assert.deepEqual(await catalog.getById('tmdb:tv:61709'), {
+    mediaType: 'tv',
+    reviewTargetType: 'series',
+    catalogId: 'tmdb:tv:61709',
+    title: 'Dragon Ball Z Kai',
+    releaseYear: 2009,
+    genres: ['Animation'],
+    posterUrl: 'https://image.example/w342/kai.jpg',
+    overview: 'An updated version of Dragon Ball Z.',
   });
 });

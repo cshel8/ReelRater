@@ -1,8 +1,8 @@
 import express from 'express';
 import { hostname } from 'node:os';
-import { createMovieRouter } from './movies/movieRoutes.js';
-import { TmdbMovieCatalog } from './movies/tmdbMovieCatalog.js';
-import type { MovieCatalogService } from './movies/types.js';
+import { createMediaRouter, createMovieRouter } from './movies/movieRoutes.js';
+import { TmdbMediaCatalog } from './movies/tmdbMovieCatalog.js';
+import type { MediaCatalogService } from './movies/types.js';
 import { unavailableMovieCatalog } from './movies/unavailableMovieCatalog.js';
 import { createAccountRouter } from './accounts/accountRoutes.js';
 import {
@@ -16,16 +16,19 @@ import type {
 
 export const createApp = (
   options: {
-    movieCatalog?: MovieCatalogService;
+    mediaCatalog?: MediaCatalogService;
+    /** @deprecated Prefer mediaCatalog. */
+    movieCatalog?: MediaCatalogService;
     accountIdentityVerifier?: AccountIdentityVerifier;
     accountDataDeleter?: AccountDataDeleter;
   } = {}
 ) => {
   const app = express();
   const token = process.env.TMDB_READ_ACCESS_TOKEN?.trim();
-  const movieCatalog =
+  const mediaCatalog =
+    options.mediaCatalog ??
     options.movieCatalog ??
-    (token ? new TmdbMovieCatalog(token) : unavailableMovieCatalog);
+    (token ? new TmdbMediaCatalog(token) : unavailableMovieCatalog);
 
   app.disable('x-powered-by');
   app.use(express.json());
@@ -40,7 +43,8 @@ export const createApp = (
     });
   });
 
-  app.use('/api/v1/movies', createMovieRouter(movieCatalog));
+  app.use('/api/v1/media', createMediaRouter(mediaCatalog));
+  app.use('/api/v1/movies', createMovieRouter(mediaCatalog));
   app.use(
     '/api/v1/account',
     createAccountRouter(

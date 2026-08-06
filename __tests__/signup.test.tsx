@@ -34,7 +34,7 @@ jest.mock('@/services', () => ({
     create: jest.fn(),
   },
   settingsService: {
-    setDefaultReviewVisibility: jest.fn(),
+    initializeForNewUser: jest.fn(),
   },
 }));
 
@@ -51,7 +51,7 @@ describe('Signup screen', () => {
       accountPrivacy: 'public',
     });
     (
-      settingsService.setDefaultReviewVisibility as jest.Mock
+      settingsService.initializeForNewUser as jest.Mock
     ).mockResolvedValue(undefined);
   });
 
@@ -100,7 +100,7 @@ describe('Signup screen', () => {
         'user-1',
         expect.objectContaining({ accountPrivacy: 'private' })
       );
-      expect(settingsService.setDefaultReviewVisibility).toHaveBeenCalledWith(
+      expect(settingsService.initializeForNewUser).toHaveBeenCalledWith(
         'user-1',
         'followers'
       );

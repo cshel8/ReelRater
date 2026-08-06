@@ -8,7 +8,7 @@ import {
   defaultMovieCachePolicy,
   type MovieCachePolicy,
 } from '@/services/movies/movieCachePolicy';
-import type { MovieCatalogId, MovieSummary } from '@/types/domain';
+import type { MediaCatalogId, MediaSummary } from '@/types/domain';
 
 const MAX_CACHED_MOVIES = 200;
 const DEFAULT_SEARCH_RESULTS = 20;
@@ -18,6 +18,8 @@ const MAX_REFRESH_RESULTS = 25;
 
 interface CachedMovieRow {
   catalog_id: string;
+  media_type: string;
+  review_target_type: string;
   title: string;
   release_year: number | null;
   genres_json: string;
@@ -44,7 +46,10 @@ const parseGenres = (value: string) => {
   }
 };
 
-const toMovie = (row: CachedMovieRow): MovieSummary => ({
+const toMedia = (row: CachedMovieRow): MediaSummary => ({
+  ...(row.media_type === 'tv' && row.review_target_type === 'series'
+    ? ({ mediaType: 'tv', reviewTargetType: 'series' } as const)
+    : ({ mediaType: 'movie', reviewTargetType: 'movie' } as const)),
   catalogId: row.catalog_id,
   title: row.title,
   releaseYear: row.release_year,
@@ -75,18 +80,20 @@ export const createSQLiteMovieCacheRepository = ({
   clock?: () => Date;
   policy?: MovieCachePolicy;
 } = {}): MovieCacheRepository => ({
-  async cache(movies) {
-    if (movies.length === 0) {
+  async cache(items) {
+    if (items.length === 0) {
       return;
     }
 
     const window = policy.createWindow(clock());
 
     await runSQLiteTransaction(async (transaction) => {
-      for (const movie of movies) {
+      for (const media of items) {
         await transaction.runAsync(
           `INSERT INTO cached_movies (
             catalog_id,
+            media_type,
+            review_target_type,
             title,
             normalized_title,
             release_year,
@@ -96,8 +103,10 @@ export const createSQLiteMovieCacheRepository = ({
             last_accessed_at,
             refresh_after,
             expires_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           ON CONFLICT(catalog_id) DO UPDATE SET
+            media_type = excluded.media_type,
+            review_target_type = excluded.review_target_type,
             title = excluded.title,
             normalized_title = excluded.normalized_title,
             release_year = excluded.release_year,
@@ -107,12 +116,14 @@ export const createSQLiteMovieCacheRepository = ({
             last_accessed_at = excluded.last_accessed_at,
             refresh_after = excluded.refresh_after,
             expires_at = excluded.expires_at`,
-          movie.catalogId,
-          movie.title,
-          normalizeMovieTitle(movie.title),
-          movie.releaseYear,
-          JSON.stringify(movie.genres),
-          movie.posterUrl,
+          media.catalogId,
+          media.mediaType,
+          media.reviewTargetType,
+          media.title,
+          normalizeMovieTitle(media.title),
+          media.releaseYear,
+          JSON.stringify(media.genres),
+          media.posterUrl,
           window.fetchedAt,
           window.fetchedAt,
           window.refreshAfter,
@@ -139,7 +150,7 @@ export const createSQLiteMovieCacheRepository = ({
     });
   },
 
-  async search(query, maximumResults = DEFAULT_SEARCH_RESULTS) {
+  async search(query, options = {}) {
     const normalizedQuery = normalizeMovieTitle(query);
     if (!normalizedQuery) {
       return [];
@@ -156,15 +167,17 @@ export const createSQLiteMovieCacheRepository = ({
     );
     const escapedQuery = escapeMovieLikePattern(normalizedQuery);
     const limit = normalizedLimit(
-      maximumResults,
+      options.maximumResults,
       DEFAULT_SEARCH_RESULTS,
       MAX_SEARCH_RESULTS
     );
     const rows = await database.getAllAsync<CachedMovieRow>(
-      `SELECT catalog_id, title, release_year, genres_json, poster_url,
+      `SELECT catalog_id, media_type, review_target_type, title,
+              release_year, genres_json, poster_url,
               cached_at, refresh_after, expires_at
        FROM cached_movies
        WHERE expires_at > ?
+         AND (? IS NULL OR media_type = ?)
          AND normalized_title LIKE ? ESCAPE '\\'
        ORDER BY
          CASE
@@ -175,13 +188,15 @@ export const createSQLiteMovieCacheRepository = ({
          last_accessed_at DESC
        LIMIT ?`,
       now,
+      options.mediaType ?? null,
+      options.mediaType ?? null,
       `%${escapedQuery}%`,
       normalizedQuery,
       `${escapedQuery}%`,
       limit
     );
 
-    return rows.map(toMovie);
+    return rows.map(toMedia);
   },
 
   async getById(catalogId) {
@@ -195,7 +210,8 @@ export const createSQLiteMovieCacheRepository = ({
       )
     );
     const row = await database.getFirstAsync<CachedMovieRow>(
-      `SELECT catalog_id, title, release_year, genres_json, poster_url,
+      `SELECT catalog_id, media_type, review_target_type, title,
+              release_year, genres_json, poster_url,
               cached_at, refresh_after, expires_at
        FROM cached_movies
        WHERE catalog_id = ?
@@ -204,7 +220,7 @@ export const createSQLiteMovieCacheRepository = ({
       now
     );
 
-    return row ? toMovie(row) : null;
+    return row ? toMedia(row) : null;
   },
 
   async listDueForRefresh(maximumResults = DEFAULT_REFRESH_RESULTS) {
@@ -222,7 +238,7 @@ export const createSQLiteMovieCacheRepository = ({
       DEFAULT_REFRESH_RESULTS,
       MAX_REFRESH_RESULTS
     );
-    const rows = await database.getAllAsync<{ catalog_id: MovieCatalogId }>(
+    const rows = await database.getAllAsync<{ catalog_id: MediaCatalogId }>(
       `SELECT catalog_id
        FROM cached_movies
        WHERE refresh_after IS NOT NULL

@@ -28,6 +28,7 @@ const expiredReview: Review = {
 
 const createBaseService = (): jest.Mocked<ReviewService> => ({
   listForUser: jest.fn(),
+  findForMedia: jest.fn(),
   create: jest.fn(),
   update: jest.fn(async (_userId, review) => review),
   remove: jest.fn(),

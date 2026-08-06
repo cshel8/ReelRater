@@ -280,6 +280,27 @@ export default function Profile() {
 
             <Pressable
                 accessibilityRole="button"
+                onPress={() => router.push('/profile/preferences')}
+                style={({ pressed }) => [
+                    styles.settingsButton,
+                    pressed && styles.buttonPressed,
+                ]}
+            >
+                <Ionicons
+                    color="#4F5662"
+                    name="options-outline"
+                    size={20}
+                />
+                <Text style={styles.settingsButtonText}>Preferences</Text>
+                <Ionicons
+                    color="#858B96"
+                    name="chevron-forward"
+                    size={19}
+                />
+            </Pressable>
+
+            <Pressable
+                accessibilityRole="button"
                 onPress={() => router.push('/profile/about-credits')}
                 style={({ pressed }) => [
                     styles.settingsButton,
@@ -407,7 +428,8 @@ const styles = StyleSheet.create({
         paddingBottom: 36,
     },
     title: {
-        alignSelf: 'flex-start',
+        width: '100%',
+        textAlign: 'center',
         fontSize: 28,
         fontWeight: '700',
         marginBottom: 24,

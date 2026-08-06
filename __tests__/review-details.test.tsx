@@ -120,6 +120,85 @@ describe('Review Details screen', () => {
     });
   });
 
+  it('preserves TV series identity when its title is edited', async () => {
+    (reviewService.listForUser as jest.Mock).mockResolvedValue({
+      reviews: [
+        {
+          id: 'review-1',
+          movieTitle: 'Dragon Ball Z Kai',
+          movie: {
+            mediaType: 'tv',
+            reviewTargetType: 'series',
+            matchStatus: 'matched',
+            catalogId: 'tmdb:tv:61709',
+            title: 'Dragon Ball Z Kai',
+            releaseYear: 2009,
+            genres: ['Animation'],
+            posterUrl: null,
+            catalogDataRetention: {
+              fetchedAt: '2098-01-01T12:00:00.000Z',
+              refreshAfter: '2098-06-01T12:00:00.000Z',
+              expiresAt: '2098-06-29T12:00:00.000Z',
+            },
+          },
+          reviewText: 'A streamlined version of a classic series.',
+          rating: '5',
+          visibility: 'private',
+          createdAt: '2026-07-18T12:00:00.000Z',
+          syncStatus: 'synced',
+        },
+      ],
+      pendingCount: 0,
+      remoteAvailable: true,
+    });
+    const screen = render(<ReviewDetailsScreen />);
+    await screen.findByText('Dragon Ball Z Kai');
+
+    fireEvent.press(screen.getByText('Edit Review'));
+    fireEvent.changeText(
+      screen.getByLabelText('Edit TV show title'),
+      'Dragon Ball Kai'
+    );
+    fireEvent.press(screen.getByText('Save Changes'));
+
+    await waitFor(() => {
+      expect(reviewService.update).toHaveBeenCalledWith(
+        'user-1',
+        expect.objectContaining({
+          movieTitle: 'Dragon Ball Kai',
+          movie: expect.objectContaining({
+            mediaType: 'tv',
+            reviewTargetType: 'series',
+            matchStatus: 'manual',
+            catalogId: null,
+          }),
+        })
+      );
+    });
+  });
+
+  it('enables saving only after a review field changes', async () => {
+    const screen = render(<ReviewDetailsScreen />);
+    await screen.findByText('Arrival');
+
+    fireEvent.press(screen.getByText('Edit Review'));
+
+    const unchangedSaveButton = screen.getByRole('button', {
+      name: 'Save Changes',
+    });
+    expect(unchangedSaveButton.props.accessibilityState.disabled).toBe(true);
+
+    fireEvent.changeText(
+      screen.getByLabelText('Edit review text'),
+      'A changed review.'
+    );
+
+    const changedSaveButton = screen.getByRole('button', {
+      name: 'Save Changes',
+    });
+    expect(changedSaveButton.props.accessibilityState.disabled).toBe(false);
+  });
+
   it('offers to save edited review fields before navigating back', async () => {
     let promptButtons: Parameters<typeof Alert.alert>[2];
     const alertSpy = jest

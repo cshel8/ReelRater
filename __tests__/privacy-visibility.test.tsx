@@ -7,7 +7,11 @@ import {
 import { Alert } from 'react-native';
 import { router } from 'expo-router';
 import PrivacyVisibilityScreen from '@/app/(tabs)/profile/privacy-visibility';
-import { followService, settingsService } from '@/services';
+import {
+  communityPreferenceRepository,
+  followService,
+  settingsService,
+} from '@/services';
 
 const mockDispatch = jest.fn();
 let mockPreventRemove:
@@ -44,11 +48,15 @@ jest.mock('@/store/userStore', () => ({
 }));
 
 jest.mock('@/services', () => ({
+  communityPreferenceRepository: {
+    removeForUser: jest.fn(),
+  },
   followService: {
     listPendingRequests: jest.fn(),
   },
   settingsService: {
     get: jest.fn(),
+    setCommunityDefaults: jest.fn(),
     setPrivacyPreferences: jest.fn(),
   },
 }));
@@ -62,6 +70,12 @@ describe('Privacy and visibility screen', () => {
       defaultReviewVisibility: 'followers',
     });
     (settingsService.setPrivacyPreferences as jest.Mock).mockResolvedValue(
+      undefined
+    );
+    (settingsService.setCommunityDefaults as jest.Mock).mockResolvedValue(
+      undefined
+    );
+    (communityPreferenceRepository.removeForUser as jest.Mock).mockResolvedValue(
       undefined
     );
     (followService.listPendingRequests as jest.Mock).mockResolvedValue([
@@ -198,4 +212,5 @@ describe('Privacy and visibility screen', () => {
     expect(settingsService.setPrivacyPreferences).not.toHaveBeenCalled();
     expect(mockDispatch).toHaveBeenCalledWith(backAction);
   });
+
 });

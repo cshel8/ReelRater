@@ -10,6 +10,7 @@ import { accountLocalDataService } from '@/services/local/accountLocalDataServic
 
 function deletionEndpoint(): string {
   const url = new URL(`${apiBaseUrl}/api/v1/account`);
+  url.protocol = url.protocol || 'https:';
   const localHost = url.hostname === 'localhost' || url.hostname === '127.0.0.1';
   if (url.protocol !== 'https:' && !localHost) {
     throw new Error(

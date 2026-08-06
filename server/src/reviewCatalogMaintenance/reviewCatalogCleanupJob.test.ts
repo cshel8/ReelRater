@@ -75,6 +75,8 @@ test('cleanup refreshes, redacts, retries, and conditionally updates records', a
         throw new Error('Catalog unavailable');
       }
       return {
+        mediaType: 'movie',
+        reviewTargetType: 'movie',
         catalogId,
         title: 'Fresh title',
         releaseYear: 2026,

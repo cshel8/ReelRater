@@ -1,10 +1,10 @@
 import type {
   CatalogDataRetention,
-  MovieCatalogId,
+  MediaCatalogId,
 } from '@/types/domain';
 
 export type PosterCacheEntry = {
-  catalogId: MovieCatalogId;
+  catalogId: MediaCatalogId;
   sourceUrl: string;
   localUri: string;
   catalogDataRetention: CatalogDataRetention;
@@ -12,15 +12,15 @@ export type PosterCacheEntry = {
 };
 
 export interface PosterCacheMetadataRepository {
-  get(catalogId: MovieCatalogId): Promise<PosterCacheEntry | null>;
+  get(catalogId: MediaCatalogId): Promise<PosterCacheEntry | null>;
   saveAndPrune(
     entry: PosterCacheEntry,
     maximumEntries: number
   ): Promise<string[]>;
-  remove(catalogId: MovieCatalogId): Promise<string | null>;
+  remove(catalogId: MediaCatalogId): Promise<string | null>;
   takeExpired(expiredAt: string): Promise<string[]>;
   listLocalUris(): Promise<string[]>;
-  markAccessed(catalogId: MovieCatalogId, accessedAt: string): Promise<void>;
+  markAccessed(catalogId: MediaCatalogId, accessedAt: string): Promise<void>;
   clear(): Promise<string[]>;
 }
 
@@ -33,7 +33,7 @@ export interface PosterFileStore {
 
 export interface PosterCacheService {
   resolve(input: {
-    catalogId: MovieCatalogId;
+    catalogId: MediaCatalogId;
     posterUrl: string;
     catalogDataRetention: CatalogDataRetention;
     allowDownload?: boolean;

@@ -1,7 +1,7 @@
-import type { MovieCatalogService } from '@/services/contracts';
+import type { MediaCatalogService } from '@/services/contracts';
 import type { Review } from '@/types/domain';
 import {
-  createMatchedMovieSnapshot,
+  createMatchedMediaSnapshot,
   isReviewCatalogDataExpired,
   isReviewCatalogDataRefreshDue,
   redactExpiredReviewCatalogData,
@@ -14,7 +14,7 @@ export type ReviewCatalogResolution<T extends Review> = {
 
 export const resolveReviewCatalogData = async <T extends Review>(
   review: T,
-  movieCatalog: MovieCatalogService,
+  mediaCatalog: MediaCatalogService,
   currentTime = new Date()
 ): Promise<ReviewCatalogResolution<T>> => {
   if (!isReviewCatalogDataRefreshDue(review.movie, currentTime)) {
@@ -26,9 +26,9 @@ export const resolveReviewCatalogData = async <T extends Review>(
   }
 
   try {
-    const movie = await movieCatalog.getById(review.movie.catalogId);
+    const movie = await mediaCatalog.getById(review.movie.catalogId);
     if (movie) {
-      const snapshot = createMatchedMovieSnapshot(movie, currentTime);
+      const snapshot = createMatchedMediaSnapshot(movie, currentTime);
       const previousFetch = review.movie.catalogDataRetention?.fetchedAt;
       const resolvedFetch =
         snapshot.matchStatus === 'matched'

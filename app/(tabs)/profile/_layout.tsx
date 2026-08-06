@@ -28,11 +28,16 @@ export default function ProfileLayout() {
         name="privacy-visibility"
         options={{ title: 'Privacy & Visibility' }}
       />
+      <Stack.Screen name="preferences" options={{ title: 'Preferences' }} />
       <Stack.Screen
         name="about-credits"
         options={{ title: 'About & Credits' }}
       />
       <Stack.Screen name="[userId]" options={{ title: 'Profile' }} />
+      <Stack.Screen
+        name="review/[reviewId]"
+        options={{ title: 'Review Details' }}
+      />
     </Stack>
   );
 }

@@ -12,7 +12,7 @@ export function createCommunityFeedService(
   remoteReviewService: RemoteCommunityReviewService
 ): CommunityFeedService {
   return {
-    async list(viewerId, maximumResults = 20) {
+    async list(viewerId, options = {}) {
       const relationships = await followService.listFollowing(viewerId);
       const authorIds = relationships.map(
         (relationship) => relationship.followedUserId
@@ -28,7 +28,7 @@ export function createCommunityFeedService(
       const sharedReviews = await remoteReviewService.listVisibleFromAuthors(
         viewerId,
         authorIds,
-        maximumResults
+        { ...options, maximumResults: options.maximumResults ?? 20 }
       );
       const uniqueAuthorIds = [
         ...new Set(sharedReviews.map((review) => review.authorId)),

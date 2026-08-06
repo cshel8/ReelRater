@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import NetInfo from '@react-native-community/netinfo';
-import { useNavigation } from 'expo-router';
+import { router, useNavigation } from 'expo-router';
 import {
   usePreventRemove,
   type NavigationAction,
@@ -20,27 +20,36 @@ import {
 import { ReviewVisibilitySelector } from '@/components/reviews/ReviewVisibilitySelector';
 import { colors } from '@/constants/colors';
 import {
-  movieCatalogService,
+  mediaCatalogService,
   reviewService,
   settingsService,
 } from '@/services';
+import { DuplicateReviewError } from '@/services/reviews/reviewErrors';
 import { userStore } from '@/store/userStore';
-import type { MovieSummary, ReviewVisibility } from '@/types/domain';
+import type {
+  MediaSummary,
+  Review,
+  ReviewMediaTarget,
+  ReviewVisibility,
+} from '@/types/domain';
 import {
-  createManualMovieSnapshot,
-  createMatchedMovieSnapshot,
+  createManualMediaSnapshot,
+  createMatchedMediaSnapshot,
 } from '@/utils/reviewMovie';
 
 const LARGE_QUEUE_WARNING_THRESHOLD = 25;
 const STAR_VALUES = [1, 2, 3, 4, 5] as const;
+type MediaType = ReviewMediaTarget['mediaType'];
 
 export default function ReviewScreen() {
   const navigation = useNavigation();
   const { userId } = userStore();
+  const [mediaType, setMediaType] = useState<MediaType>('movie');
   const [movieTitle, setMovieTitle] = useState('');
-  const [selectedMovie, setSelectedMovie] = useState<MovieSummary | null>(null);
-  const [movieResults, setMovieResults] = useState<MovieSummary[]>([]);
-  const [isSearchingMovies, setIsSearchingMovies] = useState(false);
+  const [selectedMedia, setSelectedMedia] = useState<MediaSummary | null>(null);
+  const [mediaResults, setMediaResults] = useState<MediaSummary[]>([]);
+  const [isSearchingMedia, setIsSearchingMedia] = useState(false);
+  const [isCheckingDuplicate, setIsCheckingDuplicate] = useState(false);
   const [reviewText, setReviewText] = useState('');
   const [rating, setRating] = useState(0);
   const [defaultVisibility, setDefaultVisibility] =
@@ -51,15 +60,18 @@ export default function ReviewScreen() {
   const [isOffline, setIsOffline] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isOpeningExistingReview, setIsOpeningExistingReview] =
+    useState(false);
   const [pendingNavigationAction, setPendingNavigationAction] =
     useState<NavigationAction | null>(null);
 
   const hasUnsavedChanges =
-    movieTitle.trim().length > 0 ||
-    selectedMovie !== null ||
-    reviewText.trim().length > 0 ||
-    rating !== 0 ||
-    visibility !== defaultVisibility;
+    !isOpeningExistingReview &&
+    (movieTitle.trim().length > 0 ||
+      selectedMedia !== null ||
+      reviewText.trim().length > 0 ||
+      rating !== 0 ||
+      visibility !== defaultVisibility);
 
   const fetchReviewStatus = useCallback(async () => {
     if (!userId) {
@@ -155,32 +167,32 @@ export default function ReviewScreen() {
     const query = movieTitle.trim();
     if (
       query.length < 2 ||
-      (selectedMovie && query === selectedMovie.title)
+      (selectedMedia && query === selectedMedia.title)
     ) {
-      if (movieResults.length > 0) {
-        setMovieResults([]);
+      if (mediaResults.length > 0) {
+        setMediaResults([]);
       }
-      if (isSearchingMovies) {
-        setIsSearchingMovies(false);
+      if (isSearchingMedia) {
+        setIsSearchingMedia(false);
       }
       return;
     }
 
     let active = true;
     const timer = setTimeout(() => {
-      setIsSearchingMovies(true);
-      movieCatalogService
-        .search(query, { maximumResults: 8 })
+      setIsSearchingMedia(true);
+      mediaCatalogService
+        .search(query, { maximumResults: 8, mediaType })
         .then((page) => {
           if (active) {
-            setMovieResults(page.movies);
+            setMediaResults(page.items);
           }
         })
         .catch((searchError) => {
           if (active) {
-            setMovieResults([]);
+            setMediaResults([]);
             console.log(
-              'Unable to search movies:',
+              'Unable to search media:',
               searchError instanceof Error
                 ? searchError.message
                 : searchError
@@ -189,7 +201,7 @@ export default function ReviewScreen() {
         })
         .finally(() => {
           if (active) {
-            setIsSearchingMovies(false);
+            setIsSearchingMedia(false);
           }
         });
     }, 350);
@@ -198,7 +210,7 @@ export default function ReviewScreen() {
       active = false;
       clearTimeout(timer);
     };
-  }, [movieTitle, selectedMovie]);
+  }, [mediaType, movieTitle, selectedMedia]);
 
   useEffect(() => {
     if (hasUnsavedChanges || !pendingNavigationAction) {
@@ -209,9 +221,101 @@ export default function ReviewScreen() {
     setPendingNavigationAction(null);
   }, [hasUnsavedChanges, navigation, pendingNavigationAction]);
 
+  const showExistingReview = useCallback(
+    (
+      reviewId: string,
+      review: Review | null,
+      selectedType: MediaType
+    ) => {
+      const mediaLabel = selectedType === 'tv' ? 'TV show' : 'movie';
+      const openExistingReview = (edit: boolean) => {
+        // Leave the draft visually untouched while replacing this route. Its
+        // in-memory state disappears when Write Review unmounts, avoiding a
+        // flash of the cleared form before the existing review opens.
+        setIsOpeningExistingReview(true);
+
+        requestAnimationFrame(() => {
+          router.replace({
+            pathname: '/reviews/[reviewId]',
+            params: {
+              ...(edit ? { edit: 'true' } : {}),
+              reviewId,
+            },
+          });
+        });
+      };
+
+      Alert.alert(
+        'Review already exists',
+        review
+          ? `You’ve already reviewed this ${mediaLabel}.`
+          : `You’ve already reviewed this ${mediaLabel}. Connect to the internet to view or edit your existing review.`,
+        review
+          ? [
+              { text: 'Cancel', style: 'cancel' },
+              {
+                text: 'View Review',
+                onPress: () => openExistingReview(false),
+              },
+              {
+                text: 'Edit Existing Review',
+                onPress: () => openExistingReview(true),
+              },
+            ]
+          : [{ text: 'OK' }]
+      );
+    },
+    []
+  );
+
+  const selectMedia = useCallback(
+    async (media: MediaSummary) => {
+      if (!userId || isCheckingDuplicate) {
+        return;
+      }
+
+      setIsCheckingDuplicate(true);
+      try {
+        const existingReview = await reviewService.findForMedia(userId, media);
+        if (existingReview) {
+          setMediaResults([]);
+          showExistingReview(existingReview.id, existingReview, media.mediaType);
+          return;
+        }
+
+        setSelectedMedia(media);
+        setMovieTitle(media.title);
+        setMediaResults([]);
+        void mediaCatalogService
+          .getById(media.catalogId)
+          .catch(() => undefined);
+      } catch (lookupError) {
+        if (lookupError instanceof DuplicateReviewError) {
+          setMediaResults([]);
+          showExistingReview(
+            lookupError.reviewId,
+            lookupError.existingReview,
+            media.mediaType
+          );
+          return;
+        }
+        // A lookup problem should not prevent review creation. The same check
+        // runs again when the user posts the review.
+        setSelectedMedia(media);
+        setMovieTitle(media.title);
+        setMediaResults([]);
+      } finally {
+        setIsCheckingDuplicate(false);
+      }
+    },
+    [isCheckingDuplicate, showExistingReview, userId]
+  );
+
   const handleSubmit = async (onSaved?: () => void) => {
     if (!movieTitle.trim() || !reviewText.trim() || rating === 0) {
-      Alert.alert('Please choose a movie, rating, and write your review');
+      Alert.alert(
+        `Please choose a ${mediaType === 'tv' ? 'TV show' : 'movie'}, rating, and write your review`
+      );
       return;
     }
 
@@ -221,19 +325,40 @@ export default function ReviewScreen() {
 
     setIsSubmitting(true);
     try {
+      if (selectedMedia) {
+        const existingReview = await reviewService.findForMedia(
+          userId,
+          selectedMedia
+        );
+        if (existingReview) {
+          showExistingReview(
+            existingReview.id,
+            existingReview,
+            selectedMedia.mediaType
+          );
+          return;
+        }
+      }
+
       const review = await reviewService.create(userId, {
         movieTitle: movieTitle.trim(),
-        movie: selectedMovie
-          ? createMatchedMovieSnapshot(selectedMovie)
-          : createManualMovieSnapshot(movieTitle),
+        movie: selectedMedia
+          ? createMatchedMediaSnapshot(selectedMedia)
+          : createManualMediaSnapshot(
+              movieTitle,
+              mediaType === 'tv'
+                ? { mediaType: 'tv', reviewTargetType: 'series' }
+                : { mediaType: 'movie', reviewTargetType: 'movie' }
+            ),
         reviewText: reviewText.trim(),
         rating: String(rating),
         visibility,
       });
 
       setMovieTitle('');
-      setSelectedMovie(null);
-      setMovieResults([]);
+      setSelectedMedia(null);
+      setMediaResults([]);
+      setMediaType('movie');
       setReviewText('');
       setRating(0);
       setVisibility(defaultVisibility);
@@ -242,14 +367,36 @@ export default function ReviewScreen() {
       if (onSaved) {
         onSaved();
       } else if (review.syncStatus === 'synced') {
-        Alert.alert('Review posted!');
+        Alert.alert('Review posted!', undefined, [
+          {
+            text: 'OK',
+            onPress: () => router.replace('/reviews'),
+          },
+        ]);
       } else {
         Alert.alert(
           'Review saved on this device',
-          'It will upload automatically when a connection is available.'
+          'It will upload automatically when a connection is available.',
+          [
+            {
+              text: 'OK',
+              onPress: () => router.replace('/reviews'),
+            },
+          ]
         );
       }
     } catch (error) {
+      if (error instanceof DuplicateReviewError) {
+        const existingMedia = error.existingReview?.movie;
+        showExistingReview(
+          error.reviewId,
+          error.existingReview,
+          existingMedia?.mediaType === 'tv' || selectedMedia?.mediaType === 'tv'
+            ? 'tv'
+            : 'movie'
+        );
+        return;
+      }
       const message =
         error instanceof Error ? error.message : 'Unknown database error';
       Alert.alert('Error saving review', message);
@@ -326,7 +473,52 @@ export default function ReviewScreen() {
           </Text>
         )}
 
-        <Text style={styles.label}>Movie Title</Text>
+        <Text style={styles.label}>Review Type</Text>
+        <View accessibilityRole="radiogroup" style={styles.mediaTypeSelector}>
+          {(['movie', 'tv'] as const).map((option) => {
+            const selected = mediaType === option;
+            const label = option === 'movie' ? 'Movie' : 'TV Show';
+            return (
+              <Pressable
+                accessibilityRole="radio"
+                accessibilityState={{ checked: selected }}
+                key={option}
+                onPress={() => {
+                  if (option === mediaType) {
+                    return;
+                  }
+                  setMediaType(option);
+                  setSelectedMedia(null);
+                  setMediaResults([]);
+                  setIsSearchingMedia(false);
+                }}
+                style={({ pressed }) => [
+                  styles.mediaTypeOption,
+                  selected && styles.mediaTypeOptionSelected,
+                  pressed && styles.mediaTypeOptionPressed,
+                ]}
+              >
+                <Ionicons
+                  color={selected ? colors.reviewAccent : '#7B8190'}
+                  name={option === 'movie' ? 'film-outline' : 'tv-outline'}
+                  size={19}
+                />
+                <Text
+                  style={[
+                    styles.mediaTypeOptionText,
+                    selected && styles.mediaTypeOptionTextSelected,
+                  ]}
+                >
+                  {label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+
+        <Text style={[styles.label, styles.mediaTitleLabel]}>
+          {mediaType === 'tv' ? 'TV Show Title' : 'Movie Title'}
+        </Text>
         <View style={styles.searchField}>
           <Ionicons
             accessibilityElementsHidden
@@ -335,68 +527,81 @@ export default function ReviewScreen() {
             size={24}
           />
           <TextInput
-            accessibilityLabel="Movie title"
+            accessibilityLabel={
+              mediaType === 'tv' ? 'TV show title' : 'Movie title'
+            }
             autoCapitalize="words"
             onChangeText={(value) => {
               setMovieTitle(value);
-              setSelectedMovie(null);
+              setSelectedMedia(null);
             }}
-            placeholder="Search for a movie"
+            placeholder={
+              mediaType === 'tv'
+                ? 'Search for a TV show'
+                : 'Search for a movie'
+            }
             placeholderTextColor="#9DA3AE"
             returnKeyType="next"
             style={styles.searchInput}
             value={movieTitle}
           />
         </View>
-        {isSearchingMovies ? (
+        {isSearchingMedia ? (
           <View style={styles.movieSearchStatus}>
             <ActivityIndicator color={colors.reviewAccent} size="small" />
-            <Text style={styles.movieSearchStatusText}>Searching movies…</Text>
+            <Text style={styles.movieSearchStatusText}>
+              {mediaType === 'tv'
+                ? 'Searching TV shows…'
+                : 'Searching movies…'}
+            </Text>
           </View>
         ) : null}
-        {movieResults.length > 0 ? (
+        {mediaResults.length > 0 ? (
           <View style={styles.movieResults}>
-            {movieResults.map((movie) => (
+            {mediaResults.map((media) => (
               <Pressable
-                accessibilityLabel={`Select ${movie.title}${
-                  movie.releaseYear ? ` (${movie.releaseYear})` : ''
+                accessibilityLabel={`Select ${media.title}${
+                  media.releaseYear ? ` (${media.releaseYear})` : ''
                 }`}
                 accessibilityRole="button"
-                key={movie.catalogId}
-                onPress={() => {
-                  setSelectedMovie(movie);
-                  setMovieTitle(movie.title);
-                  setMovieResults([]);
-                  void movieCatalogService
-                    .getById(movie.catalogId)
-                    .catch(() => undefined);
-                }}
+                key={media.catalogId}
+                disabled={isCheckingDuplicate}
+                onPress={() => void selectMedia(media)}
                 style={({ pressed }) => [
                   styles.movieResult,
                   pressed && styles.movieResultPressed,
                 ]}
               >
-                {movie.posterUrl ? (
+                {media.posterUrl ? (
                   <Image
-                    source={{ uri: movie.posterUrl }}
+                    source={{ uri: media.posterUrl }}
                     style={styles.movieResultPoster}
                   />
                 ) : (
                   <View style={styles.movieResultPosterPlaceholder}>
-                    <Ionicons color="#9DA3AE" name="film-outline" size={21} />
+                    <Ionicons
+                      color="#9DA3AE"
+                      name={
+                        media.mediaType === 'tv'
+                          ? 'tv-outline'
+                          : 'film-outline'
+                      }
+                      size={21}
+                    />
                   </View>
                 )}
                 <View style={styles.movieResultText}>
                   <Text numberOfLines={1} style={styles.movieResultTitle}>
-                    {movie.title}
+                    {media.title}
                   </Text>
                   <Text numberOfLines={1} style={styles.movieResultDetails}>
                     {[
-                      movie.releaseYear,
-                      movie.genres.slice(0, 2).join(', '),
+                      media.releaseYear,
+                      media.genres.slice(0, 2).join(', '),
                     ]
                       .filter(Boolean)
-                      .join(' · ') || 'Movie'}
+                      .join(' · ') ||
+                      (media.mediaType === 'tv' ? 'TV Series' : 'Movie')}
                   </Text>
                 </View>
                 <Ionicons color="#858B96" name="chevron-forward" size={19} />
@@ -404,15 +609,66 @@ export default function ReviewScreen() {
             ))}
           </View>
         ) : null}
+        {selectedMedia ? (
+          <View
+            accessibilityLabel={`Selected ${
+              selectedMedia.mediaType === 'tv' ? 'TV show' : 'movie'
+            }: ${selectedMedia.title}`}
+            style={styles.selectedMovie}
+          >
+            {selectedMedia.posterUrl ? (
+              <Image
+                accessibilityLabel={`Selected poster for ${selectedMedia.title}`}
+                source={{ uri: selectedMedia.posterUrl }}
+                style={styles.selectedMoviePoster}
+              />
+            ) : (
+              <View style={styles.selectedMoviePosterPlaceholder}>
+                <Ionicons
+                  color="#9DA3AE"
+                  name={
+                    selectedMedia.mediaType === 'tv'
+                      ? 'tv-outline'
+                      : 'film-outline'
+                  }
+                  size={28}
+                />
+              </View>
+            )}
+            <View style={styles.selectedMovieText}>
+              <View style={styles.selectedMovieTitleRow}>
+                <Text numberOfLines={2} style={styles.selectedMovieTitle}>
+                  {selectedMedia.title}
+                </Text>
+                <Ionicons
+                  color={colors.reviewAccent}
+                  name="checkmark-circle"
+                  size={20}
+                />
+              </View>
+              <Text numberOfLines={2} style={styles.selectedMovieDetails}>
+                {[
+                  selectedMedia.releaseYear,
+                  selectedMedia.genres.join(', '),
+                ]
+                  .filter(Boolean)
+                  .join(' · ') ||
+                  (selectedMedia.mediaType === 'tv'
+                    ? 'Selected TV series'
+                    : 'Selected movie')}
+              </Text>
+            </View>
+          </View>
+        ) : null}
         <Text style={styles.searchHint}>
-          {selectedMovie
-            ? `Selected${
-                selectedMovie.releaseYear
-                  ? ` · ${selectedMovie.releaseYear}`
-                  : ''
-              }. Edit the title to choose a different movie.`
+          {selectedMedia
+            ? `Edit the title to choose a different ${
+                mediaType === 'tv' ? 'TV show' : 'movie'
+              }.`
             : isOffline
-              ? 'Search cached movies, or type a title to create a manual offline review.'
+              ? `Search cached ${
+                  mediaType === 'tv' ? 'TV shows' : 'movies'
+                }, or type a title to create a manual offline review.`
               : 'Choose a result, or type a title to create a manual review.'}
         </Text>
 
@@ -457,7 +713,9 @@ export default function ReviewScreen() {
           accessibilityLabel="Your review"
           multiline
           onChangeText={setReviewText}
-          placeholder="What did you think of the movie?"
+          placeholder={`What did you think of the ${
+            mediaType === 'tv' ? 'show' : 'movie'
+          }?`}
           placeholderTextColor="#9DA3AE"
           style={styles.reviewInput}
           textAlignVertical="top"
@@ -565,6 +823,43 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     marginBottom: 11,
   },
+  mediaTypeSelector: {
+    width: '100%',
+    minHeight: 48,
+    padding: 4,
+    borderRadius: 12,
+    backgroundColor: '#F2F3F5',
+    flexDirection: 'row',
+    gap: 4,
+  },
+  mediaTypeOption: {
+    flex: 1,
+    minHeight: 40,
+    borderRadius: 9,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 7,
+  },
+  mediaTypeOptionSelected: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#F1CAD5',
+  },
+  mediaTypeOptionPressed: {
+    opacity: 0.7,
+  },
+  mediaTypeOptionText: {
+    color: '#6F7480',
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  mediaTypeOptionTextSelected: {
+    color: colors.reviewAccentText,
+  },
+  mediaTitleLabel: {
+    marginTop: 26,
+  },
   searchField: {
     minHeight: 58,
     borderWidth: 1,
@@ -645,6 +940,54 @@ const styles = StyleSheet.create({
     color: '#7B8190',
     fontSize: 12,
     marginTop: 5,
+  },
+  selectedMovie: {
+    width: '100%',
+    borderWidth: 1,
+    borderColor: '#F1CAD5',
+    borderRadius: 11,
+    backgroundColor: colors.reviewAccentSoft,
+    marginTop: 10,
+    padding: 11,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  selectedMoviePoster: {
+    width: 58,
+    height: 86,
+    borderRadius: 7,
+    backgroundColor: '#ECEDEF',
+  },
+  selectedMoviePosterPlaceholder: {
+    width: 58,
+    height: 86,
+    borderRadius: 7,
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  selectedMovieText: {
+    flex: 1,
+    minWidth: 0,
+    marginLeft: 13,
+  },
+  selectedMovieTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+  },
+  selectedMovieTitle: {
+    flex: 1,
+    color: '#24252A',
+    fontSize: 16,
+    fontWeight: '700',
+    lineHeight: 21,
+  },
+  selectedMovieDetails: {
+    color: '#6F7480',
+    fontSize: 13,
+    lineHeight: 18,
+    marginTop: 7,
   },
   ratingLabel: {
     marginTop: 36,

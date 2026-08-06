@@ -28,7 +28,7 @@ jest.mock('@/store/userStore', () => ({
 jest.mock('@/services', () => ({
   authService: { signOut: jest.fn() },
   profileService: { create: jest.fn() },
-  settingsService: { setDefaultReviewVisibility: jest.fn() },
+  settingsService: { initializeForNewUser: jest.fn() },
 }));
 
 describe('Complete profile screen', () => {
@@ -56,7 +56,7 @@ describe('Complete profile screen', () => {
         handleNormalized: 'connormovies',
         accountPrivacy: 'public',
       });
-      expect(settingsService.setDefaultReviewVisibility).toHaveBeenCalledWith(
+      expect(settingsService.initializeForNewUser).toHaveBeenCalledWith(
         'user-1',
         'private'
       );

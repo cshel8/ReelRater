@@ -67,6 +67,10 @@ export const createPosterAwareReviewService = (
     };
   },
 
+  findForMedia(userId, media) {
+    return reviewService.findForMedia(userId, media);
+  },
+
   create(userId, input) {
     return reviewService.create(userId, input);
   },

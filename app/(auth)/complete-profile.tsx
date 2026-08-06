@@ -55,7 +55,7 @@ export default function CompleteProfile() {
         handleNormalized: normalizeHandle(formattedHandle),
         accountPrivacy,
       });
-      await settingsService.setDefaultReviewVisibility(
+      await settingsService.initializeForNewUser(
         userId,
         defaultVisibility
       );

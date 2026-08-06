@@ -55,6 +55,8 @@ describe('SQLite movie cache repository', () => {
   it('caches normalized movie metadata and prunes older entries', async () => {
     await movieCache.cache([
       {
+        mediaType: 'movie',
+        reviewTargetType: 'movie',
         catalogId: 'tmdb:329865',
         title: 'Arrival',
         releaseYear: 2016,
@@ -67,6 +69,8 @@ describe('SQLite movie cache repository', () => {
       1,
       expect.stringContaining('INSERT INTO cached_movies'),
       'tmdb:329865',
+      'movie',
+      'movie',
       'Arrival',
       'arrival',
       2016,
@@ -93,6 +97,8 @@ describe('SQLite movie cache repository', () => {
     getAllAsync.mockResolvedValue([
       {
         catalog_id: 'tmdb:329865',
+        media_type: 'movie',
+        review_target_type: 'movie',
         title: 'Arrival',
         release_year: 2016,
         genres_json: '["Drama","Science Fiction"]',
@@ -104,9 +110,14 @@ describe('SQLite movie cache repository', () => {
     ]);
 
     await expect(
-      movieCache.search('  Arr%_  ', 10)
+      movieCache.search('  Arr%_  ', {
+        maximumResults: 10,
+        mediaType: 'movie',
+      })
     ).resolves.toEqual([
       {
+        mediaType: 'movie',
+        reviewTargetType: 'movie',
         catalogId: 'tmdb:329865',
         title: 'Arrival',
         releaseYear: 2016,
@@ -122,11 +133,40 @@ describe('SQLite movie cache repository', () => {
     expect(getAllAsync).toHaveBeenCalledWith(
       expect.stringContaining('FROM cached_movies'),
       '2026-01-01T12:00:00.000Z',
+      'movie',
+      'movie',
       '%arr\\%\\_%',
       'arr%_',
       'arr\\%\\_%',
       10
     );
+  });
+
+  it('preserves TV series identity in offline catalog results', async () => {
+    getAllAsync.mockResolvedValue([
+      {
+        catalog_id: 'tmdb:tv:61709',
+        media_type: 'tv',
+        review_target_type: 'series',
+        title: 'Dragon Ball Z Kai',
+        release_year: 2009,
+        genres_json: '["Animation"]',
+        poster_url: null,
+        cached_at: '2026-01-01T12:00:00.000Z',
+        refresh_after: '2026-05-31T12:00:00.000Z',
+        expires_at: '2026-06-29T12:00:00.000Z',
+      },
+    ]);
+
+    await expect(
+      movieCache.search('Dragon Ball', { mediaType: 'tv' })
+    ).resolves.toEqual([
+      expect.objectContaining({
+        mediaType: 'tv',
+        reviewTargetType: 'series',
+        catalogId: 'tmdb:tv:61709',
+      }),
+    ]);
   });
 
   it('returns no results for an empty search without opening SQLite', async () => {
