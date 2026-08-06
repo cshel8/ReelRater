@@ -22,6 +22,8 @@ describe('movie cache maintenance', () => {
     const remote = createRemote();
     const cache = createCache();
     const refreshedMovie = {
+      mediaType: 'movie' as const,
+      reviewTargetType: 'movie' as const,
       catalogId: 'catalog:1',
       title: 'Arrival',
       releaseYear: 2016,

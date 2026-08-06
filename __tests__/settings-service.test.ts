@@ -1,5 +1,6 @@
 import {
   getDoc,
+  runTransaction,
   serverTimestamp,
   setDoc,
   writeBatch,
@@ -15,6 +16,7 @@ jest.mock('firebase/firestore', () => ({
     path: segments.join('/'),
   })),
   getDoc: jest.fn(),
+  runTransaction: jest.fn(),
   serverTimestamp: jest.fn(() => 'server-timestamp'),
   setDoc: jest.fn(),
   writeBatch: jest.fn(),
@@ -48,6 +50,77 @@ describe('Firebase settings service', () => {
       { merge: true }
     );
     expect(serverTimestamp).toHaveBeenCalled();
+  });
+
+  it('uses Community defaults when older settings documents have no fields', async () => {
+    (getDoc as jest.Mock)
+      .mockResolvedValueOnce({
+        exists: () => true,
+        data: () => ({ defaultReviewVisibility: 'followers' }),
+      })
+      .mockResolvedValueOnce({
+        exists: () => true,
+        data: () => ({ accountPrivacy: 'private' }),
+      });
+
+    await expect(firebaseSettingsService.get('user-1')).resolves.toEqual({
+      accountPrivacy: 'private',
+      defaultReviewVisibility: 'followers',
+      defaultMediaFilter: 'all',
+      defaultSort: 'newest',
+    });
+  });
+
+  it('initializes new accounts without overwriting valid saved values', async () => {
+    const get = jest.fn().mockResolvedValue({
+      exists: () => true,
+      data: () => ({
+        defaultReviewVisibility: 'public',
+        defaultMediaFilter: 'tv',
+        defaultSort: 'highestRated',
+      }),
+    });
+    const set = jest.fn();
+    (runTransaction as jest.Mock).mockImplementation(
+      async (_database, operation) => operation({ get, set })
+    );
+
+    await firebaseSettingsService.initializeForNewUser('user-1', 'private');
+
+    expect(set).toHaveBeenCalledWith(
+      { path: 'userSettings/user-1' },
+      {
+        defaultReviewVisibility: 'public',
+        defaultMediaFilter: 'tv',
+        defaultSort: 'highestRated',
+        updatedAt: 'server-timestamp',
+      },
+      { merge: true }
+    );
+  });
+
+  it('assigns Community defaults for a new settings document', async () => {
+    const get = jest.fn().mockResolvedValue({
+      exists: () => false,
+      data: () => ({}),
+    });
+    const set = jest.fn();
+    (runTransaction as jest.Mock).mockImplementation(
+      async (_database, operation) => operation({ get, set })
+    );
+
+    await firebaseSettingsService.initializeForNewUser('user-1', 'followers');
+
+    expect(set).toHaveBeenCalledWith(
+      { path: 'userSettings/user-1' },
+      {
+        defaultReviewVisibility: 'followers',
+        defaultMediaFilter: 'all',
+        defaultSort: 'newest',
+        updatedAt: 'server-timestamp',
+      },
+      { merge: true }
+    );
   });
 
   it('updates account privacy and the review default atomically', async () => {

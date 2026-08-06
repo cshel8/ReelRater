@@ -29,15 +29,35 @@ export type CreateUserProfileInput = Pick<
 >;
 
 /**
- * An opaque identifier supplied by the configured movie catalog.
+ * An opaque identifier supplied by the configured media catalog.
  *
  * App features should store and pass this value without parsing it or
  * assuming which external provider created it.
  */
-export type MovieCatalogId = string;
+export type MediaCatalogId = string;
 
-export type MovieSummary = {
-  catalogId: MovieCatalogId;
+/** @deprecated Prefer MediaCatalogId for new code. */
+export type MovieCatalogId = MediaCatalogId;
+
+/**
+ * The supported combinations of catalog media and review target.
+ *
+ * Keeping these as a discriminated union prevents invalid combinations such
+ * as a movie season. Season and episode targets can be added here later
+ * without changing existing movie or series reviews.
+ */
+export type ReviewMediaTarget =
+  | {
+      mediaType: 'movie';
+      reviewTargetType: 'movie';
+    }
+  | {
+      mediaType: 'tv';
+      reviewTargetType: 'series';
+    };
+
+export type MediaSummary = ReviewMediaTarget & {
+  catalogId: MediaCatalogId;
   title: string;
   releaseYear: number | null;
   genres: string[];
@@ -46,22 +66,32 @@ export type MovieSummary = {
   catalogDataRetention?: CatalogDataRetention;
 };
 
-export type MovieDetails = MovieSummary & {
+export type MediaDetails = MediaSummary & {
   overview: string | null;
 };
 
-export type MovieSearchOptions = {
+export type MediaSearchOptions = {
   /**
    * An opaque continuation value returned by the preceding search.
    */
   cursor?: string;
   maximumResults?: number;
+  mediaType?: ReviewMediaTarget['mediaType'];
 };
 
-export type MovieSearchPage = {
-  movies: MovieSummary[];
+export type MediaSearchPage = {
+  items: MediaSummary[];
   nextCursor: string | null;
 };
+
+/** @deprecated Prefer MediaSummary for new code. */
+export type MovieSummary = MediaSummary;
+/** @deprecated Prefer MediaDetails for new code. */
+export type MovieDetails = MediaDetails;
+/** @deprecated Prefer MediaSearchOptions for new code. */
+export type MovieSearchOptions = MediaSearchOptions;
+/** @deprecated Prefer MediaSearchPage for new code. */
+export type MovieSearchPage = MediaSearchPage;
 
 export type CatalogDataRetention = {
   fetchedAt: string;
@@ -69,39 +99,50 @@ export type CatalogDataRetention = {
   expiresAt: string;
 };
 
-type ReviewMovieFields = Omit<
-  MovieSummary,
-  'catalogId' | 'catalogDataRetention'
+type ReviewMediaFields = Omit<
+  MediaSummary,
+  | 'catalogId'
+  | 'catalogDataRetention'
+  | 'mediaType'
+  | 'reviewTargetType'
 >;
 
-/**
- * The movie information saved with a review.
- *
- * A snapshot lets reviews render and synchronize without contacting the
- * catalog again. Manual entries can be matched to a catalog movie later.
- */
-export type ReviewMovieSnapshot =
-  | (ReviewMovieFields & {
+type ReviewCatalogMatch =
+  | {
       matchStatus: 'matched';
-      catalogId: MovieCatalogId;
+      catalogId: MediaCatalogId;
       /** Missing metadata from legacy snapshots is treated as expired. */
       catalogDataRetention?: CatalogDataRetention;
       /** Device-only display URI. Snapshot serializers intentionally omit it. */
       localPosterUri?: string;
-    })
-  | (ReviewMovieFields & {
+    }
+  | {
       matchStatus: 'manual';
       catalogId: null;
-    });
+    };
+
+/**
+ * The catalog-independent media information saved with a review.
+ *
+ * A snapshot lets reviews render and synchronize without contacting the
+ * catalog again. Manual entries can be matched to a catalog item later.
+ */
+export type ReviewMediaSnapshot = ReviewMediaFields &
+  ReviewMediaTarget &
+  ReviewCatalogMatch;
+
+/** @deprecated Prefer ReviewMediaSnapshot for new code. */
+export type ReviewMovieSnapshot = ReviewMediaSnapshot;
 
 export type Review = {
   id: string;
   movieTitle: string;
   /**
    * Optional only for backward compatibility with reviews created before
-   * movie catalog integration. New reviews always provide this snapshot.
+   * catalog integration. The `movie` property name is retained while older
+   * persisted reviews are supported; new code should use its media snapshot.
    */
-  movie?: ReviewMovieSnapshot;
+  movie?: ReviewMediaSnapshot;
   reviewText: string;
   rating: string;
   visibility: ReviewVisibility;
@@ -116,9 +157,34 @@ export type CreateReviewInput = Omit<
 
 export type ReviewVisibility = 'public' | 'followers' | 'private';
 
+export type CommunityMediaFilter = 'all' | 'movie' | 'tv';
+export type CommunitySort = 'newest' | 'oldest' | 'highest' | 'lowest';
+export type CommunityDefaultSort =
+  | 'newest'
+  | 'oldest'
+  | 'highestRated'
+  | 'lowestRated';
+
+export const DEFAULT_COMMUNITY_PREFERENCES = {
+  defaultMediaFilter: 'all',
+  defaultSort: 'newest',
+} as const satisfies {
+  defaultMediaFilter: CommunityMediaFilter;
+  defaultSort: CommunityDefaultSort;
+};
+
+export type CommunityActivePreferences = {
+  mediaFilter: CommunityMediaFilter;
+  sort: CommunitySort;
+};
+
 export type UserSettings = {
   accountPrivacy: AccountPrivacy;
   defaultReviewVisibility: ReviewVisibility;
+  /** Cross-device account default, distinct from the active Community filter. */
+  defaultMediaFilter: CommunityMediaFilter;
+  /** Cross-device account default, distinct from the active Community sort. */
+  defaultSort: CommunityDefaultSort;
 };
 
 export type SharedReview = Review & {

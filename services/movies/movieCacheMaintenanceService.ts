@@ -1,4 +1,4 @@
-import type { MovieCatalogService } from '@/services/contracts';
+import type { MediaCatalogService } from '@/services/contracts';
 import type { MovieCacheRepository } from '@/services/local/movieCacheTypes';
 
 export type MovieCacheMaintenanceResult = {
@@ -11,7 +11,7 @@ export interface MovieCacheMaintenanceService {
 }
 
 export const createMovieCacheMaintenanceService = (
-  remoteCatalog: MovieCatalogService,
+  remoteCatalog: MediaCatalogService,
   movieCache: MovieCacheRepository
 ): MovieCacheMaintenanceService => {
   let activeRun: Promise<MovieCacheMaintenanceResult> | null = null;

@@ -10,11 +10,35 @@ import type {
 } from '@/services/local/pendingReviewTypes';
 import type { CachedReviewRepository } from '@/services/local/cachedReviewTypes';
 import {
+  noopReviewTargetIdentityRepository,
+  type ReviewTargetIdentityRepository,
+} from '@/services/local/reviewTargetIdentityTypes';
+import {
   createReviewSyncService,
   type ReviewSyncService,
 } from '@/services/reviews/reviewSyncService';
+import { DuplicateReviewError } from '@/services/reviews/reviewErrors';
 import type { Review } from '@/types/domain';
 import { readReviewMovieSnapshot } from '@/utils/reviewMovie';
+import { createReviewTargetKey } from '@/utils/reviewTargetIdentity';
+
+const findMatchingReview = (
+  reviews: Review[],
+  media: {
+    catalogId: string;
+    mediaType: 'movie' | 'tv';
+    reviewTargetType: 'movie' | 'series';
+  }
+) =>
+  reviews.find((review) => {
+    const snapshot = readReviewMovieSnapshot(review.movie, review.movieTitle);
+    return (
+      snapshot.matchStatus === 'matched' &&
+      snapshot.catalogId === media.catalogId &&
+      snapshot.mediaType === media.mediaType &&
+      snapshot.reviewTargetType === media.reviewTargetType
+    );
+  }) ?? null;
 
 function createOperation(
   userId: string,
@@ -86,7 +110,9 @@ export function createOfflineReviewService(
   syncService: ReviewSyncService = createReviewSyncService(
     pendingRepository,
     remoteService
-  )
+  ),
+  identityRepository: ReviewTargetIdentityRepository =
+    noopReviewTargetIdentityRepository
 ): ReviewService {
   const canSynchronize = async () => {
     try {
@@ -96,59 +122,132 @@ export function createOfflineReviewService(
     }
   };
 
-  return {
-    async listForUser(userId) {
-      let remoteReviews: Review[] = [];
-      let remoteAvailable = true;
-      let remoteError: string | null = null;
+  const listForUser = async (userId: string) => {
+    let remoteReviews: Review[] = [];
+    let remoteAvailable = true;
+    let remoteError: string | null = null;
 
-      if (!(await canSynchronize())) {
-        remoteAvailable = false;
-        remoteError = 'Device is offline';
-        remoteReviews = await cachedRepository.listForUser(userId);
-      } else {
+    if (!(await canSynchronize())) {
+      remoteAvailable = false;
+      remoteError = 'Device is offline';
+      remoteReviews = await cachedRepository.listForUser(userId);
+    } else {
+      try {
+        remoteReviews = await remoteService.listForUser(userId);
         try {
-          remoteReviews = await remoteService.listForUser(userId);
-          try {
-            await cachedRepository.replaceForUser(userId, remoteReviews);
-          } catch (cacheError) {
-            const message =
-              cacheError instanceof Error
-                ? cacheError.message
-                : 'Unknown local cache error';
-            console.log('Unable to update the offline review cache:', message);
-          }
-        } catch (error) {
-          remoteAvailable = false;
-          remoteError = getErrorMessage(error);
-          console.log('Unable to load reviews from the remote service:', remoteError);
-          remoteReviews = await cachedRepository.listForUser(userId);
+          await cachedRepository.replaceForUser(userId, remoteReviews);
+        } catch (cacheError) {
+          const message =
+            cacheError instanceof Error
+              ? cacheError.message
+              : 'Unknown local cache error';
+          console.log('Unable to update the offline review cache:', message);
         }
+      } catch (error) {
+        remoteAvailable = false;
+        remoteError = getErrorMessage(error);
+        console.log('Unable to load reviews from the remote service:', remoteError);
+        remoteReviews = await cachedRepository.listForUser(userId);
+      }
+    }
+
+    const operations = await pendingRepository.listForUser(userId);
+    const reviews = mergeReviews(remoteReviews, operations);
+
+    if (remoteAvailable) {
+      try {
+        await identityRepository.replaceForUser(userId, reviews);
+      } catch (identityError) {
+        const message =
+          identityError instanceof Error
+            ? identityError.message
+            : 'Unknown local identity index error';
+        console.log('Unable to update the offline review identity index:', message);
+      }
+    }
+
+    return {
+      reviews,
+      pendingCount: operations.length,
+      remoteAvailable,
+      remoteError,
+    };
+  };
+
+  return {
+    listForUser,
+
+    async findForMedia(userId, media) {
+      const result = await listForUser(userId);
+      const existingReview = findMatchingReview(result.reviews, media);
+      if (existingReview) {
+        return existingReview;
       }
 
-      const operations = await pendingRepository.listForUser(userId);
-
-      return {
-        reviews: mergeReviews(remoteReviews, operations),
-        pendingCount: operations.length,
-        remoteAvailable,
-        remoteError,
-      };
+      const indexedReviewId = await identityRepository.findReviewId(
+        userId,
+        createReviewTargetKey(media)
+      );
+      if (indexedReviewId) {
+        throw new DuplicateReviewError(null, indexedReviewId);
+      }
+      return null;
     },
 
     async create(userId, input) {
+      const mediaSnapshot = readReviewMovieSnapshot(
+        input.movie,
+        input.movieTitle
+      );
+      if (mediaSnapshot.matchStatus === 'matched') {
+        const result = await listForUser(userId);
+        const existingReview = findMatchingReview(
+          result.reviews,
+          mediaSnapshot
+        );
+        if (existingReview) {
+          throw new DuplicateReviewError(existingReview);
+        }
+        const indexedReviewId = await identityRepository.findReviewId(
+          userId,
+          createReviewTargetKey(mediaSnapshot)
+        );
+        if (indexedReviewId) {
+          throw new DuplicateReviewError(null, indexedReviewId);
+        }
+      }
+
       const review: Review = {
         id: randomUUID(),
         ...input,
-        movie: readReviewMovieSnapshot(input.movie, input.movieTitle),
+        movie: mediaSnapshot,
         createdAt: new Date().toISOString(),
         syncStatus: 'pending',
       };
 
-      await pendingRepository.enqueueCreate(
-        createOperation(userId, review.id, 'create', review)
-      );
-      await cachedRepository.save(userId, review);
+      try {
+        await identityRepository.save(userId, review);
+      } catch (identityError) {
+        if (mediaSnapshot.matchStatus === 'matched') {
+          const indexedReviewId = await identityRepository.findReviewId(
+            userId,
+            createReviewTargetKey(mediaSnapshot)
+          );
+          if (indexedReviewId) {
+            throw new DuplicateReviewError(null, indexedReviewId);
+          }
+        }
+        throw identityError;
+      }
+      try {
+        await pendingRepository.enqueueCreate(
+          createOperation(userId, review.id, 'create', review)
+        );
+        await cachedRepository.save(userId, review);
+      } catch (localSaveError) {
+        await identityRepository.remove(userId, review.id).catch(() => undefined);
+        throw localSaveError;
+      }
       if (await canSynchronize()) {
         await syncService.sync(userId);
       }
@@ -174,6 +273,15 @@ export function createOfflineReviewService(
         createOperation(userId, review.id, 'create', pendingReview)
       );
       await cachedRepository.save(userId, pendingReview);
+      try {
+        await identityRepository.save(userId, pendingReview);
+      } catch (identityError) {
+        const message =
+          identityError instanceof Error
+            ? identityError.message
+            : 'Unknown local identity index error';
+        console.log('Unable to update the review identity index:', message);
+      }
       if (await canSynchronize()) {
         await syncService.sync(userId);
       }
@@ -200,6 +308,15 @@ export function createOfflineReviewService(
             ? cacheError.message
             : 'Unknown local cache error';
         console.log('Unable to remove the cached review:', message);
+      }
+      try {
+        await identityRepository.remove(userId, reviewId);
+      } catch (identityError) {
+        const message =
+          identityError instanceof Error
+            ? identityError.message
+            : 'Unknown local identity index error';
+        console.log('Unable to remove the review identity:', message);
       }
       if (await canSynchronize()) {
         await syncService.sync(userId);

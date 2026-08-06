@@ -1,14 +1,14 @@
-import type { MovieCatalogService } from '@/services/contracts';
+import type { MediaCatalogService } from '@/services/contracts';
 import type { MovieCacheRepository } from '@/services/local/movieCacheTypes';
 
-export const createCachedMovieCatalogService = (
-  remoteCatalog: MovieCatalogService,
+export const createCachedMediaCatalogService = (
+  remoteCatalog: MediaCatalogService,
   movieCache: MovieCacheRepository
-): MovieCatalogService => ({
+): MediaCatalogService => ({
   async search(query, options) {
     try {
       const page = await remoteCatalog.search(query, options);
-      await movieCache.cache(page.movies).catch((error) => {
+      await movieCache.cache(page.items).catch((error) => {
         console.log(
           'Unable to cache movie search results:',
           error instanceof Error ? error.message : error
@@ -23,7 +23,7 @@ export const createCachedMovieCatalogService = (
       }
 
       return {
-        movies: await movieCache.search(query, options?.maximumResults),
+        items: await movieCache.search(query, options),
         nextCursor: null,
       };
     }
@@ -52,3 +52,6 @@ export const createCachedMovieCatalogService = (
     }
   },
 });
+
+/** @deprecated Prefer createCachedMediaCatalogService for new code. */
+export const createCachedMovieCatalogService = createCachedMediaCatalogService;

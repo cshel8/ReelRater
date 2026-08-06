@@ -1,34 +1,47 @@
-export type MovieCatalogId = string;
+export type MediaCatalogId = string;
 
-export type MovieSummary = {
-  catalogId: MovieCatalogId;
+export type MediaTarget =
+  | { mediaType: 'movie'; reviewTargetType: 'movie' }
+  | { mediaType: 'tv'; reviewTargetType: 'series' };
+
+export type MediaSummary = MediaTarget & {
+  catalogId: MediaCatalogId;
   title: string;
   releaseYear: number | null;
   genres: string[];
   posterUrl: string | null;
 };
 
-export type MovieDetails = MovieSummary & {
+export type MediaDetails = MediaSummary & {
   overview: string | null;
 };
 
-export type MovieSearchOptions = {
+export type MediaSearchOptions = {
   cursor?: string;
   maximumResults?: number;
+  mediaType?: MediaTarget['mediaType'];
 };
 
-export type MovieSearchPage = {
-  movies: MovieSummary[];
+export type MediaSearchPage = {
+  items: MediaSummary[];
   nextCursor: string | null;
 };
 
-export interface MovieCatalogService {
+export interface MediaCatalogService {
   search(
     query: string,
-    options?: MovieSearchOptions
-  ): Promise<MovieSearchPage>;
-  getById(catalogId: MovieCatalogId): Promise<MovieDetails | null>;
+    options?: MediaSearchOptions
+  ): Promise<MediaSearchPage>;
+  getById(catalogId: MediaCatalogId): Promise<MediaDetails | null>;
 }
+
+/** Compatibility aliases while existing movie-specific files are migrated. */
+export type MovieCatalogId = MediaCatalogId;
+export type MovieSummary = MediaSummary;
+export type MovieDetails = MediaDetails;
+export type MovieSearchOptions = MediaSearchOptions;
+export type MovieSearchPage = MediaSearchPage;
+export type MovieCatalogService = MediaCatalogService;
 
 export class InvalidMovieCatalogIdError extends Error {}
 

@@ -1,11 +1,15 @@
-import type { MovieCatalogId, MovieSummary } from '@/types/domain';
+import type {
+  MediaCatalogId,
+  MediaSearchOptions,
+  MediaSummary,
+} from '@/types/domain';
 
 export interface MovieCacheRepository {
-  cache(movies: MovieSummary[]): Promise<void>;
-  search(query: string, maximumResults?: number): Promise<MovieSummary[]>;
-  getById(catalogId: MovieCatalogId): Promise<MovieSummary | null>;
-  listDueForRefresh(maximumResults?: number): Promise<MovieCatalogId[]>;
+  cache(items: MediaSummary[]): Promise<void>;
+  search(query: string, options?: MediaSearchOptions): Promise<MediaSummary[]>;
+  getById(catalogId: MediaCatalogId): Promise<MediaSummary | null>;
+  listDueForRefresh(maximumResults?: number): Promise<MediaCatalogId[]>;
   purgeExpired(): Promise<void>;
-  markAccessed(catalogId: MovieCatalogId): Promise<void>;
+  markAccessed(catalogId: MediaCatalogId): Promise<void>;
   clear(): Promise<void>;
 }

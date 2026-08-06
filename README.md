@@ -56,20 +56,34 @@ The future AWS Application Load Balancer target group should use `/health` as it
 ### Movie catalog configuration
 
 Movie search is routed through the API server so external catalog credentials
-are not bundled into the mobile app. Set TMDB's API Read Access Token in the
-server process before starting it:
+are not bundled into the mobile app. Copy the example environment file once:
 
 ```bash
-export TMDB_READ_ACCESS_TOKEN="your-token"
+cd server
+cp .env.example .env
+```
+
+Open `server/.env`, paste TMDB's API Read Access Token after the equals sign,
+and then start the server:
+
+```bash
 npm run dev
 ```
 
-When running that server locally for the iOS Simulator, start Expo from the
-project root with:
+The real `.env` file is ignored by Git. Only the blank `.env.example` template
+is shared with other developers, who must provide their own local token or use
+a deployed API server that already has one configured.
+
+The app defaults to `http://127.0.0.1:3000`, so when using the iOS Simulator,
+start Expo normally from the project root:
 
 ```bash
-EXPO_PUBLIC_API_BASE_URL="http://127.0.0.1:3000" npx expo start
+npx expo start
 ```
+
+For a physical device or deployed server, set `EXPO_PUBLIC_API_BASE_URL` to an
+address that device can reach. This keeps the app independent from any one API
+host without requiring application-code changes.
 
 Until the token is set, movie endpoints return HTTP `503` with the code
 `movie_catalog_unavailable`; the health endpoint continues to work normally.
@@ -132,12 +146,16 @@ The following deployment adapters are intentionally deferred:
 Until those adapters and the schedule are configured, the cleanup core is
 tested and buildable but does not run automatically.
 
-Available movie endpoints:
+Available media endpoints:
 
 ```text
-GET /api/v1/movies/search?query=Arrival
-GET /api/v1/movies/{catalogId}
+GET /api/v1/media/search?query=Arrival&mediaType=movie
+GET /api/v1/media/search?query=Dragon%20Ball%20Z%20Kai&mediaType=tv
+GET /api/v1/media/{catalogId}
 ```
+
+The older `/api/v1/movies` route remains available for compatibility while
+clients migrate to the media endpoint.
 
 ### Account deletion backend
 

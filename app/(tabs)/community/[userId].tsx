@@ -1,1 +1,5 @@
-export { default } from '../profile/[userId]';
+import PublicProfileScreen from '../profile/[userId]';
+
+export default function CommunityPublicProfileScreen() {
+  return <PublicProfileScreen routeBase="community" />;
+}

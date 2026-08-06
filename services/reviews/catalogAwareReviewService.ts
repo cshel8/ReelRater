@@ -1,5 +1,5 @@
 import type {
-  MovieCatalogService,
+  MediaCatalogService,
   ReviewService,
 } from '@/services/contracts';
 import { resolveReviewCatalogData } from '@/services/movies/reviewCatalogResolver';
@@ -9,7 +9,7 @@ const MAX_SNAPSHOT_REFRESHES_PER_LOAD = 10;
 
 export const createCatalogAwareReviewService = (
   reviewService: ReviewService,
-  movieCatalog: MovieCatalogService,
+  mediaCatalog: MediaCatalogService,
   clock: () => Date = () => new Date()
 ): ReviewService => ({
   async listForUser(userId) {
@@ -35,7 +35,7 @@ export const createCatalogAwareReviewService = (
 
       const resolution = await resolveReviewCatalogData(
         review,
-        movieCatalog,
+        mediaCatalog,
         currentTime
       );
 
@@ -53,6 +53,10 @@ export const createCatalogAwareReviewService = (
     }
 
     return { ...result, reviews };
+  },
+
+  findForMedia(userId, media) {
+    return reviewService.findForMedia(userId, media);
   },
 
   create(userId, input) {

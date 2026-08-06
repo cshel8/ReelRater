@@ -265,8 +265,8 @@ export default function PrivacyVisibilityScreen() {
 
       <View style={styles.note}>
         <Text style={styles.noteText}>
-          Changing the default affects future reviews only. It does not change
-          reviews you have already posted.
+          Changing the default review visibility affects future reviews only.
+          It does not change reviews you have already posted.
         </Text>
       </View>
     </ScrollView>

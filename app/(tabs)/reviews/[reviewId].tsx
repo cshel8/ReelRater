@@ -9,7 +9,7 @@ import {
   usePreventRemove,
   type NavigationAction,
 } from 'expo-router/react-navigation';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -32,21 +32,31 @@ import { userStore } from '@/store/userStore';
 import type { Review, ReviewVisibility } from '@/types/domain';
 import { formatReviewDate } from '@/utils/reviewFormatting';
 import {
-  createManualMovieSnapshot,
+  createManualMediaSnapshot,
+  getDisplayReviewMovieMetadata,
   getDisplayReviewMovieTitle,
-  readReviewMovieSnapshot,
+  readReviewMediaSnapshot,
 } from '@/utils/reviewMovie';
 
 const STAR_VALUES = [1, 2, 3, 4, 5] as const;
 
 export default function ReviewDetailsScreen() {
   const navigation = useNavigation();
-  const { reviewId: reviewIdParameter } = useLocalSearchParams<{
+  const scrollViewRef = useRef<ScrollView>(null);
+  const hasAppliedEditParameter = useRef(false);
+  const {
+    edit: editParameter,
+    reviewId: reviewIdParameter,
+  } = useLocalSearchParams<{
+    edit?: string | string[];
     reviewId: string | string[];
   }>();
   const reviewId = Array.isArray(reviewIdParameter)
     ? reviewIdParameter[0]
     : reviewIdParameter;
+  const shouldBeginEditing = Array.isArray(editParameter)
+    ? editParameter[0] === 'true'
+    : editParameter === 'true';
   const userId = userStore((state) => state.userId);
   const [review, setReview] = useState<Review | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -86,6 +96,18 @@ export default function ReviewDetailsScreen() {
         result.reviews.find((candidate) => candidate.id === reviewId) ?? null;
 
       setReview(matchingReview);
+      if (
+        matchingReview &&
+        shouldBeginEditing &&
+        !hasAppliedEditParameter.current
+      ) {
+        hasAppliedEditParameter.current = true;
+        setEditedMovieTitle(matchingReview.movieTitle);
+        setEditedReviewText(matchingReview.reviewText);
+        setEditedRating(Number(matchingReview.rating) || 0);
+        setEditedVisibility(matchingReview.visibility);
+        setIsEditing(true);
+      }
       if (!matchingReview) {
         setMessage(
           result.remoteAvailable
@@ -102,7 +124,7 @@ export default function ReviewDetailsScreen() {
     } finally {
       setIsLoading(false);
     }
-  }, [reviewId, userId]);
+  }, [reviewId, shouldBeginEditing, userId]);
 
   useFocusEffect(
     useCallback(() => {
@@ -146,19 +168,34 @@ export default function ReviewDetailsScreen() {
 
     setIsSaving(true);
     try {
+      const currentMedia = readReviewMediaSnapshot(
+        review.movie,
+        review.movieTitle
+      );
       const updatedReview = await reviewService.update(userId, {
         ...review,
         movieTitle: editedMovieTitle.trim(),
         movie:
           editedMovieTitle.trim() === review.movieTitle
-            ? readReviewMovieSnapshot(review.movie, review.movieTitle)
-            : createManualMovieSnapshot(editedMovieTitle),
+            ? currentMedia
+            : createManualMediaSnapshot(
+                editedMovieTitle,
+                currentMedia.mediaType === 'tv'
+                  ? { mediaType: 'tv', reviewTargetType: 'series' }
+                  : { mediaType: 'movie', reviewTargetType: 'movie' }
+              ),
         reviewText: editedReviewText.trim(),
         rating: String(editedRating),
         visibility: editedVisibility,
       });
       setReview(updatedReview);
       setIsEditing(false);
+      requestAnimationFrame(() => {
+        scrollViewRef.current?.scrollTo({
+          animated: true,
+          y: 0,
+        });
+      });
 
       if (onSaved) {
         onSaved();
@@ -275,12 +312,19 @@ export default function ReviewDetailsScreen() {
   }
 
   const formattedDate = formatReviewDate(review.createdAt);
+  const mediaSnapshot = readReviewMediaSnapshot(
+    review.movie,
+    review.movieTitle
+  );
+  const isTvReview = mediaSnapshot.mediaType === 'tv';
   const displayMovieTitle = getDisplayReviewMovieTitle(review);
+  const movieMetadata = getDisplayReviewMovieMetadata(review);
 
   return (
     <ScrollView
       contentContainerStyle={styles.container}
       keyboardShouldPersistTaps="handled"
+      ref={scrollViewRef}
       showsVerticalScrollIndicator={false}
     >
       <ReviewPoster
@@ -291,6 +335,10 @@ export default function ReviewDetailsScreen() {
       />
 
       <Text style={styles.movieTitle}>{displayMovieTitle}</Text>
+
+      {movieMetadata ? (
+        <Text style={styles.movieMetadata}>{movieMetadata}</Text>
+      ) : null}
 
       <View style={styles.stars}>
         <ReviewStars rating={review.rating} size={25} />
@@ -350,15 +398,17 @@ export default function ReviewDetailsScreen() {
         </View>
       )}
 
-      <View style={styles.divider} />
-
       {isEditing ? (
         <View style={styles.editor}>
           <Text style={styles.sectionTitle}>Edit Review</Text>
 
-          <Text style={styles.label}>Movie Title</Text>
+          <Text style={styles.label}>
+            {isTvReview ? 'TV Show Title' : 'Movie Title'}
+          </Text>
           <TextInput
-            accessibilityLabel="Edit movie title"
+            accessibilityLabel={
+              isTvReview ? 'Edit TV show title' : 'Edit movie title'
+            }
             onChangeText={setEditedMovieTitle}
             style={styles.input}
             value={editedMovieTitle}
@@ -418,15 +468,22 @@ export default function ReviewDetailsScreen() {
             </Pressable>
             <Pressable
               accessibilityRole="button"
-              disabled={isSaving}
+              disabled={isSaving || !hasUnsavedChanges}
               onPress={() => void saveChanges()}
               style={({ pressed }) => [
                 styles.saveButton,
-                pressed && styles.actionButtonPressed,
-                isSaving && styles.disabled,
+                pressed && hasUnsavedChanges && styles.actionButtonPressed,
+                (isSaving || !hasUnsavedChanges) &&
+                  styles.saveButtonDisabled,
               ]}
             >
-              <Text style={styles.saveButtonText}>
+              <Text
+                style={[
+                  styles.saveButtonText,
+                  (isSaving || !hasUnsavedChanges) &&
+                    styles.saveButtonTextDisabled,
+                ]}
+              >
                 {isSaving ? 'Saving…' : 'Save Changes'}
               </Text>
             </Pressable>
@@ -434,8 +491,12 @@ export default function ReviewDetailsScreen() {
         </View>
       ) : (
         <>
-          <Text style={styles.sectionTitle}>Your Review</Text>
-          <Text style={styles.reviewText}>{review.reviewText}</Text>
+          <View style={styles.reviewSection}>
+            <Text style={styles.sectionTitle}>Your Review</Text>
+            <View style={styles.reviewBodyCard}>
+              <Text style={styles.reviewText}>{review.reviewText}</Text>
+            </View>
+          </View>
 
           <View style={styles.detailActions}>
             <Pressable
@@ -539,6 +600,12 @@ const styles = StyleSheet.create({
     marginTop: 23,
     textAlign: 'center',
   },
+  movieMetadata: {
+    color: '#858B96',
+    fontSize: 14,
+    marginTop: 7,
+    textAlign: 'center',
+  },
   stars: {
     marginTop: 13,
   },
@@ -589,25 +656,31 @@ const styles = StyleSheet.create({
   failedSyncBadgeText: {
     color: '#B42318',
   },
-  divider: {
+  reviewSection: {
     width: '100%',
-    height: 1,
-    backgroundColor: '#ECEDEF',
-    marginTop: 31,
+    marginTop: 30,
   },
   sectionTitle: {
     width: '100%',
     color: '#17171C',
     fontSize: 18,
     fontWeight: '700',
-    marginTop: 25,
+  },
+  reviewBodyCard: {
+    width: '100%',
+    borderWidth: 1,
+    borderColor: '#E3DDE0',
+    borderRadius: 12,
+    backgroundColor: '#FFFAFC',
+    marginTop: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 15,
   },
   reviewText: {
     width: '100%',
     color: '#353941',
     fontSize: 16,
     lineHeight: 25,
-    marginTop: 12,
   },
   detailActions: {
     width: '100%',
@@ -648,6 +721,7 @@ const styles = StyleSheet.create({
   },
   editor: {
     width: '100%',
+    marginTop: 30,
   },
   label: {
     color: '#19191F',
@@ -707,6 +781,12 @@ const styles = StyleSheet.create({
   saveButtonText: {
     color: '#FFFFFF',
     fontWeight: '700',
+  },
+  saveButtonDisabled: {
+    backgroundColor: '#D9DCE3',
+  },
+  saveButtonTextDisabled: {
+    color: '#7B8190',
   },
   actionButtonPressed: {
     opacity: 0.65,

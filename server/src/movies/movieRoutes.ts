@@ -4,7 +4,8 @@ import {
   InvalidMovieCursorError,
   MovieCatalogUnavailableError,
   MovieCatalogUpstreamError,
-  type MovieCatalogService,
+  type MediaCatalogService,
+  type MediaTarget,
 } from './types.js';
 
 const respondToCatalogError = (response: Response, error: unknown) => {
@@ -39,7 +40,15 @@ const respondToCatalogError = (response: Response, error: unknown) => {
   });
 };
 
-export const createMovieRouter = (movieCatalog: MovieCatalogService) => {
+type MediaRouterOptions = {
+  forcedMediaType?: MediaTarget['mediaType'];
+  legacyMovieResponse?: boolean;
+};
+
+export const createMediaRouter = (
+  mediaCatalog: MediaCatalogService,
+  options: MediaRouterOptions = {}
+) => {
   const router = Router();
 
   router.get('/search', async (request, response) => {
@@ -68,10 +77,36 @@ export const createMovieRouter = (movieCatalog: MovieCatalogService) => {
     const maximumResults = Number.isFinite(requestedMaximum)
       ? Math.min(20, Math.max(1, requestedMaximum!))
       : undefined;
+    const requestedMediaType =
+      typeof request.query.mediaType === 'string'
+        ? request.query.mediaType
+        : undefined;
+    if (
+      requestedMediaType !== undefined &&
+      requestedMediaType !== 'movie' &&
+      requestedMediaType !== 'tv'
+    ) {
+      response.status(400).json({
+        error: {
+          code: 'invalid_request',
+          message: 'mediaType must be either movie or tv.',
+        },
+      });
+      return;
+    }
+    const mediaType =
+      options.forcedMediaType ?? requestedMediaType ?? 'movie';
 
     try {
+      const page = await mediaCatalog.search(query, {
+        cursor,
+        maximumResults,
+        mediaType,
+      });
       response.status(200).json(
-        await movieCatalog.search(query, { cursor, maximumResults })
+        options.legacyMovieResponse
+          ? { movies: page.items, nextCursor: page.nextCursor }
+          : page
       );
     } catch (error) {
       respondToCatalogError(response, error);
@@ -80,14 +115,14 @@ export const createMovieRouter = (movieCatalog: MovieCatalogService) => {
 
   router.get('/:catalogId', async (request, response) => {
     try {
-      const movie = await movieCatalog.getById(request.params.catalogId);
-      if (!movie) {
+      const media = await mediaCatalog.getById(request.params.catalogId);
+      if (!media) {
         response.status(404).json({
-          error: { code: 'movie_not_found', message: 'Movie not found.' },
+          error: { code: 'media_not_found', message: 'Media not found.' },
         });
         return;
       }
-      response.status(200).json(movie);
+      response.status(200).json(media);
     } catch (error) {
       respondToCatalogError(response, error);
     }
@@ -95,3 +130,9 @@ export const createMovieRouter = (movieCatalog: MovieCatalogService) => {
 
   return router;
 };
+
+export const createMovieRouter = (mediaCatalog: MediaCatalogService) =>
+  createMediaRouter(mediaCatalog, {
+    forcedMediaType: 'movie',
+    legacyMovieResponse: true,
+  });

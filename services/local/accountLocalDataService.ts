@@ -11,6 +11,10 @@ export const accountLocalDataService = {
         'DELETE FROM cached_reviews WHERE user_id = ?',
         userId
       );
+      await transaction.runAsync(
+        'DELETE FROM review_target_identities WHERE user_id = ?',
+        userId
+      );
     });
   },
 };

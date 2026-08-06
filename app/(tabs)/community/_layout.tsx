@@ -19,6 +19,10 @@ export default function CommunityLayout() {
       <Stack.Screen name="index" options={{ title: 'Community' }} />
       <Stack.Screen name="find-people" options={{ title: 'Find People' }} />
       <Stack.Screen name="[userId]" options={{ title: 'Profile' }} />
+      <Stack.Screen
+        name="review/[reviewId]"
+        options={{ title: 'Review Details' }}
+      />
     </Stack>
   );
 }

@@ -21,17 +21,28 @@ import { colors } from '@/constants/colors';
 import { useResetTabScroll } from '@/hooks/useResetTabScroll';
 import { reviewService } from '@/services';
 import { userStore } from '@/store/userStore';
-import type { Review } from '@/types/domain';
+import type { Review, ReviewMediaTarget } from '@/types/domain';
 import { formatReviewDate } from '@/utils/reviewFormatting';
-import { getDisplayReviewMovieTitle } from '@/utils/reviewMovie';
+import {
+  getDisplayReviewMovieMetadata,
+  getDisplayReviewMovieTitle,
+  readReviewMediaSnapshot,
+} from '@/utils/reviewMovie';
 
 type ReviewSort = 'newest' | 'oldest' | 'highest' | 'lowest';
+type ReviewMediaFilter = 'all' | ReviewMediaTarget['mediaType'];
 
 const SORT_OPTIONS: { label: string; value: ReviewSort }[] = [
   { label: 'Newest first', value: 'newest' },
   { label: 'Oldest first', value: 'oldest' },
   { label: 'Highest rated', value: 'highest' },
   { label: 'Lowest rated', value: 'lowest' },
+];
+
+const MEDIA_FILTER_OPTIONS: { label: string; value: ReviewMediaFilter }[] = [
+  { label: 'All', value: 'all' },
+  { label: 'Movies', value: 'movie' },
+  { label: 'TV Shows', value: 'tv' },
 ];
 
 function getReviewTime(review: Review): number {
@@ -63,6 +74,7 @@ function ReviewRow({
 }) {
   const formattedDate = formatReviewDate(review.createdAt);
   const displayMovieTitle = getDisplayReviewMovieTitle(review);
+  const movieMetadata = getDisplayReviewMovieMetadata(review);
 
   return (
     <Pressable
@@ -97,6 +109,12 @@ function ReviewRow({
           )}
         </View>
 
+        {movieMetadata ? (
+          <Text numberOfLines={1} style={styles.movieMetadata}>
+            {movieMetadata}
+          </Text>
+        ) : null}
+
         <View style={styles.listStars}>
           <ReviewStars rating={review.rating} />
         </View>
@@ -110,24 +128,22 @@ function ReviewRow({
         )}
       </View>
 
-      <Ionicons
-        color="#858B96"
-        name="chevron-forward"
-        size={22}
-        style={styles.chevron}
-      />
     </Pressable>
   );
 }
 
-function SortReviewsModal({
+function ReviewOptionsModal({
   onClose,
-  onSelect,
+  onSelectMediaFilter,
+  onSelectSort,
+  selectedMediaFilter,
   selectedSort,
   visible,
 }: {
   onClose: () => void;
-  onSelect: (sort: ReviewSort) => void;
+  onSelectMediaFilter: (filter: ReviewMediaFilter) => void;
+  onSelectSort: (sort: ReviewSort) => void;
+  selectedMediaFilter: ReviewMediaFilter;
   selectedSort: ReviewSort;
   visible: boolean;
 }) {
@@ -140,22 +156,23 @@ function SortReviewsModal({
     >
       <View style={styles.modalContainer}>
         <Pressable
-          accessibilityLabel="Close sort options"
+          accessibilityLabel="Close filter and sort options"
           onPress={onClose}
           style={styles.modalBackdrop}
         />
         <View style={styles.sortSheet}>
           <View style={styles.sortHandle} />
-          <Text style={styles.sortTitle}>Sort Reviews</Text>
-          {SORT_OPTIONS.map((option) => {
-            const selected = option.value === selectedSort;
+          <Text style={styles.sortTitle}>Filter &amp; Sort</Text>
+          <Text style={styles.optionsSectionTitle}>Show</Text>
+          {MEDIA_FILTER_OPTIONS.map((option) => {
+            const selected = option.value === selectedMediaFilter;
 
             return (
               <Pressable
                 accessibilityRole="button"
                 accessibilityState={{ selected }}
                 key={option.value}
-                onPress={() => onSelect(option.value)}
+                onPress={() => onSelectMediaFilter(option.value)}
                 style={({ pressed }) => [
                   styles.sortOption,
                   pressed && styles.sortOptionPressed,
@@ -179,6 +196,50 @@ function SortReviewsModal({
               </Pressable>
             );
           })}
+          <View style={styles.optionsDivider} />
+          <Text style={styles.optionsSectionTitle}>Sort By</Text>
+          {SORT_OPTIONS.map((option) => {
+            const selected = option.value === selectedSort;
+
+            return (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityState={{ selected }}
+                key={option.value}
+                onPress={() => onSelectSort(option.value)}
+                style={({ pressed }) => [
+                  styles.sortOption,
+                  pressed && styles.sortOptionPressed,
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.sortOptionText,
+                    selected && styles.selectedSortOptionText,
+                  ]}
+                >
+                  {option.label}
+                </Text>
+                {selected && (
+                  <Ionicons
+                    color={colors.reviewAccent}
+                    name="checkmark"
+                    size={22}
+                  />
+                )}
+              </Pressable>
+            );
+          })}
+          <Pressable
+            accessibilityRole="button"
+            onPress={onClose}
+            style={({ pressed }) => [
+              styles.optionsDoneButton,
+              pressed && styles.optionsDoneButtonPressed,
+            ]}
+          >
+            <Text style={styles.optionsDoneButtonText}>Done</Text>
+          </Pressable>
         </View>
       </View>
     </Modal>
@@ -196,6 +257,8 @@ export default function MyReviewsScreen() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedSort, setSelectedSort] = useState<ReviewSort>('newest');
+  const [selectedMediaFilter, setSelectedMediaFilter] =
+    useState<ReviewMediaFilter>('all');
   const [sortModalVisible, setSortModalVisible] = useState(false);
   const [searchVisible, setSearchVisible] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -242,18 +305,26 @@ export default function MyReviewsScreen() {
 
   const visibleReviews = useMemo(() => {
     const normalizedQuery = searchQuery.trim().toLocaleLowerCase();
+    const mediaFilteredReviews =
+      selectedMediaFilter === 'all'
+        ? reviews
+        : reviews.filter(
+            (review) =>
+              readReviewMediaSnapshot(review.movie, review.movieTitle)
+                .mediaType === selectedMediaFilter
+          );
     const matchingReviews = normalizedQuery
-      ? reviews.filter((review) => {
+      ? mediaFilteredReviews.filter((review) => {
           const movieTitle = getDisplayReviewMovieTitle(review);
           return (
             movieTitle.toLocaleLowerCase().includes(normalizedQuery) ||
             review.reviewText.toLocaleLowerCase().includes(normalizedQuery)
           );
         })
-      : reviews;
+      : mediaFilteredReviews;
 
     return sortReviews(matchingReviews, selectedSort);
-  }, [reviews, searchQuery, selectedSort]);
+  }, [reviews, searchQuery, selectedMediaFilter, selectedSort]);
 
   const loadReviews = useCallback(
     async (refreshing = false) => {
@@ -297,6 +368,9 @@ export default function MyReviewsScreen() {
       () => () => {
         setSearchQuery('');
         setSearchVisible(false);
+        setSelectedMediaFilter('all');
+        setSelectedSort('newest');
+        setSortModalVisible(false);
       },
       []
     )
@@ -329,7 +403,7 @@ export default function MyReviewsScreen() {
               autoCorrect={false}
               autoFocus
               onChangeText={setSearchQuery}
-              placeholder="Search movie titles or review text"
+              placeholder="Search titles or review text"
               placeholderTextColor="#9DA3AE"
               returnKeyType="search"
               style={styles.searchInput}
@@ -427,20 +501,28 @@ export default function MyReviewsScreen() {
     </Pressable>
   );
 
-  const sortHeaderButton = () => (
-    <Pressable
-      accessibilityLabel="Sort reviews"
-      accessibilityRole="button"
-      hitSlop={10}
-      onPress={() => setSortModalVisible(true)}
-      style={({ pressed }) => [
-        styles.headerButton,
-        pressed && styles.headerButtonPressed,
-      ]}
-    >
-      <Ionicons color="#33363D" name="filter" size={23} />
-    </Pressable>
-  );
+  const filterHeaderButton = () => {
+    const hasActiveOptions =
+      selectedMediaFilter !== 'all' || selectedSort !== 'newest';
+    return (
+      <Pressable
+        accessibilityLabel="Filter and sort reviews"
+        accessibilityRole="button"
+        hitSlop={10}
+        onPress={() => setSortModalVisible(true)}
+        style={({ pressed }) => [
+          styles.headerButton,
+          pressed && styles.headerButtonPressed,
+        ]}
+      >
+        <Ionicons
+          color={hasActiveOptions ? colors.reviewAccent : '#33363D'}
+          name="filter"
+          size={23}
+        />
+      </Pressable>
+    );
+  };
 
   if (isLoading) {
     return (
@@ -448,7 +530,7 @@ export default function MyReviewsScreen() {
         <Stack.Screen
           options={{
             headerLeft: searchHeaderButton,
-            headerRight: sortHeaderButton,
+            headerRight: filterHeaderButton,
           }}
         />
         <View style={styles.loadingContainer}>
@@ -464,7 +546,7 @@ export default function MyReviewsScreen() {
       <Stack.Screen
         options={{
           headerLeft: searchHeaderButton,
-          headerRight: sortHeaderButton,
+          headerRight: filterHeaderButton,
         }}
       />
       <FlatList
@@ -487,7 +569,7 @@ export default function MyReviewsScreen() {
             <Text style={styles.emptyTitle}>
               {error
                 ? 'Reviews unavailable'
-                : searchQuery.trim()
+                : searchQuery.trim() || selectedMediaFilter !== 'all'
                   ? 'No matching reviews'
                   : 'No reviews yet'}
             </Text>
@@ -495,8 +577,12 @@ export default function MyReviewsScreen() {
               {error
                 ? error
                 : searchQuery.trim()
-                  ? 'Try another movie title or phrase from your review.'
-                  : 'When you post a review, it will appear here.'}
+                  ? 'Try another title or phrase from your review.'
+                  : selectedMediaFilter === 'tv'
+                    ? "You don't have any TV show reviews yet."
+                    : selectedMediaFilter === 'movie'
+                      ? "You don't have any movie reviews yet."
+                      : 'When you post a review, it will appear here.'}
             </Text>
             {error && (
               <Pressable
@@ -532,12 +618,11 @@ export default function MyReviewsScreen() {
         )}
         showsVerticalScrollIndicator={false}
       />
-      <SortReviewsModal
+      <ReviewOptionsModal
         onClose={() => setSortModalVisible(false)}
-        onSelect={(sort) => {
-          setSelectedSort(sort);
-          setSortModalVisible(false);
-        }}
+        onSelectMediaFilter={setSelectedMediaFilter}
+        onSelectSort={setSelectedSort}
+        selectedMediaFilter={selectedMediaFilter}
         selectedSort={selectedSort}
         visible={sortModalVisible}
       />
@@ -721,6 +806,11 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '700',
   },
+  movieMetadata: {
+    color: '#858B96',
+    fontSize: 13,
+    marginTop: 4,
+  },
   syncStatus: {
     color: '#8A6500',
     fontSize: 11,
@@ -743,10 +833,6 @@ const styles = StyleSheet.create({
     color: '#858B96',
     fontSize: 13,
     marginTop: 9,
-  },
-  chevron: {
-    alignSelf: 'center',
-    marginLeft: -8,
   },
   separator: {
     height: 13,
@@ -819,6 +905,19 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     marginBottom: 8,
   },
+  optionsSectionTitle: {
+    color: '#858B96',
+    fontSize: 12,
+    fontWeight: '700',
+    letterSpacing: 0.7,
+    marginTop: 8,
+    textTransform: 'uppercase',
+  },
+  optionsDivider: {
+    height: 1,
+    backgroundColor: '#E3E4E8',
+    marginVertical: 10,
+  },
   sortOption: {
     minHeight: 52,
     borderBottomWidth: 1,
@@ -836,6 +935,22 @@ const styles = StyleSheet.create({
   },
   selectedSortOptionText: {
     color: colors.reviewAccentText,
+    fontWeight: '700',
+  },
+  optionsDoneButton: {
+    minHeight: 48,
+    borderRadius: 10,
+    backgroundColor: colors.reviewAccent,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 18,
+  },
+  optionsDoneButtonPressed: {
+    opacity: 0.75,
+  },
+  optionsDoneButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
     fontWeight: '700',
   },
 });

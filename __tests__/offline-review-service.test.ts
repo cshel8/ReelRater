@@ -1,12 +1,16 @@
 import { randomUUID } from 'expo-crypto';
 import { createOfflineReviewService } from '@/services/reviews/offlineReviewService';
+import { DuplicateReviewError } from '@/services/reviews/reviewErrors';
 import type { RemoteReviewService } from '@/services/contracts';
 import type { CachedReviewRepository } from '@/services/local/cachedReviewTypes';
+import type { ReviewTargetIdentityRepository } from '@/services/local/reviewTargetIdentityTypes';
 import type {
   PendingReviewOperation,
   PendingReviewRepository,
 } from '@/services/local/pendingReviewTypes';
 import type { Review } from '@/types/domain';
+import { createMatchedMediaSnapshot } from '@/utils/reviewMovie';
+import { readReviewTargetKey } from '@/utils/reviewTargetIdentity';
 
 jest.mock('expo-crypto', () => ({
   randomUUID: jest.fn(),
@@ -99,6 +103,67 @@ function createMemoryCache(initialReviews: Review[] = []) {
   };
 
   return { getCachedReviews: () => cachedReviews, repository };
+}
+
+function createMemoryIdentityRepository() {
+  const identities = new Map<string, string>();
+  const keyFor = (userId: string, targetKey: string) =>
+    `${userId}\u0000${targetKey}`;
+  const repository: ReviewTargetIdentityRepository = {
+    findReviewId: jest.fn(async (userId, targetKey) =>
+      identities.get(keyFor(userId, targetKey)) ?? null
+    ),
+    replaceForUser: jest.fn(async (userId, reviews) => {
+      for (const key of [...identities.keys()]) {
+        if (key.startsWith(`${userId}\u0000`)) {
+          identities.delete(key);
+        }
+      }
+      for (const review of reviews) {
+        const snapshot = createReviewSnapshot(review);
+        const targetKey = readReviewTargetKey(snapshot);
+        if (targetKey && !identities.has(keyFor(userId, targetKey))) {
+          identities.set(keyFor(userId, targetKey), review.id);
+        }
+      }
+    }),
+    save: jest.fn(async (userId, review) => {
+      for (const [key, reviewId] of identities) {
+        if (key.startsWith(`${userId}\u0000`) && reviewId === review.id) {
+          identities.delete(key);
+        }
+      }
+      const snapshot = createReviewSnapshot(review);
+      const targetKey = readReviewTargetKey(snapshot);
+      if (targetKey) {
+        identities.set(keyFor(userId, targetKey), review.id);
+      }
+    }),
+    remove: jest.fn(async (userId, reviewId) => {
+      for (const [key, candidateReviewId] of identities) {
+        if (
+          key.startsWith(`${userId}\u0000`) &&
+          candidateReviewId === reviewId
+        ) {
+          identities.delete(key);
+        }
+      }
+    }),
+  };
+  return { identities, repository };
+}
+
+function createReviewSnapshot(review: Review) {
+  return review.movie ?? {
+    mediaType: 'movie' as const,
+    reviewTargetType: 'movie' as const,
+    matchStatus: 'manual' as const,
+    catalogId: null,
+    title: review.movieTitle,
+    releaseYear: null,
+    genres: [],
+    posterUrl: null,
+  };
 }
 
 describe('offline review service', () => {
@@ -244,6 +309,48 @@ describe('offline review service', () => {
     expect(result.reviews).toEqual([cachedReview]);
   });
 
+  it('finds a matching review that is still pending offline', async () => {
+    const { repository } = createMemoryRepository();
+    const cache = createMemoryCache();
+    const remoteService = createRemoteService();
+    const reviewService = createOfflineReviewService(
+      repository,
+      cache.repository,
+      remoteService,
+      { isOnline: jest.fn().mockResolvedValue(false) }
+    );
+    const media = {
+      mediaType: 'movie' as const,
+      reviewTargetType: 'movie' as const,
+      catalogId: 'tmdb:movie:329865',
+      title: 'Arrival',
+      releaseYear: 2016,
+      genres: ['Drama'],
+      posterUrl: null,
+    };
+
+    const createdReview = await reviewService.create('user-1', {
+      movieTitle: media.title,
+      movie: createMatchedMediaSnapshot(media),
+      reviewText: 'Excellent.',
+      rating: '5',
+      visibility: 'private',
+    });
+    const duplicate = await reviewService.findForMedia('user-1', media);
+
+    expect(duplicate?.id).toBe(createdReview.id);
+    expect(remoteService.listForUser).not.toHaveBeenCalled();
+    await expect(
+      reviewService.create('user-1', {
+        movieTitle: media.title,
+        movie: createMatchedMediaSnapshot(media),
+        reviewText: 'A second review.',
+        rating: '4',
+        visibility: 'private',
+      })
+    ).rejects.toBeInstanceOf(DuplicateReviewError);
+  });
+
   it('uses only the five newest synchronized reviews when offline', async () => {
     const { repository } = createMemoryRepository();
     const cache = createMemoryCache();
@@ -278,5 +385,57 @@ describe('offline review service', () => {
       'review-3',
       'review-2',
     ]);
+  });
+
+  it('remembers older review identities without caching their full content', async () => {
+    const { repository } = createMemoryRepository();
+    const cache = createMemoryCache();
+    const identities = createMemoryIdentityRepository();
+    const remoteService = createRemoteService();
+    const mediaItems = Array.from({ length: 6 }, (_, index) => ({
+      mediaType: 'movie' as const,
+      reviewTargetType: 'movie' as const,
+      catalogId: `tmdb:movie:${index + 1}`,
+      title: `Movie ${index + 1}`,
+      releaseYear: 2020 + index,
+      genres: [],
+      posterUrl: null,
+    }));
+    remoteService.listForUser.mockResolvedValue(
+      mediaItems.map((media, index) => ({
+        id: `review-${index + 1}`,
+        movieTitle: media.title,
+        movie: createMatchedMediaSnapshot(media),
+        reviewText: `Review ${index + 1}`,
+        rating: '4',
+        visibility: 'private',
+        createdAt: `2026-07-${String(index + 10).padStart(2, '0')}T12:00:00.000Z`,
+        syncStatus: 'synced',
+      }))
+    );
+    const connectivity = {
+      isOnline: jest
+        .fn()
+        .mockResolvedValueOnce(true)
+        .mockResolvedValue(false),
+    };
+    const reviewService = createOfflineReviewService(
+      repository,
+      cache.repository,
+      remoteService,
+      connectivity,
+      undefined,
+      identities.repository
+    );
+
+    await reviewService.listForUser('user-1');
+
+    expect(cache.getCachedReviews()).toHaveLength(5);
+    await expect(
+      reviewService.findForMedia('user-1', mediaItems[0])
+    ).rejects.toMatchObject({
+      existingReview: null,
+      reviewId: 'review-1',
+    });
   });
 });

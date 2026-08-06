@@ -96,7 +96,7 @@ export default function Signup() {
       }
 
       const profile = await profileService.create(userId, profileInput);
-      await settingsService.setDefaultReviewVisibility(
+      await settingsService.initializeForNewUser(
         userId,
         defaultVisibility
       );
