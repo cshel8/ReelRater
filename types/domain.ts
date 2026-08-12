@@ -11,6 +11,10 @@ export type UserProfile = {
   handleNormalized: string;
   profileImage: string | null;
   accountPrivacy: AccountPrivacy;
+  /** Maintained only by trusted backend code. */
+  followerCount: number | null;
+  /** Maintained only by trusted backend code. */
+  followingCount: number | null;
 };
 
 export type PublicUserProfile = Pick<
@@ -21,6 +25,8 @@ export type PublicUserProfile = Pick<
   | 'handleNormalized'
   | 'profileImage'
   | 'accountPrivacy'
+  | 'followerCount'
+  | 'followingCount'
 >;
 
 export type CreateUserProfileInput = Pick<

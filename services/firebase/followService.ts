@@ -155,7 +155,10 @@ export const firebaseFollowService: FollowService = {
 
   async listFollowers(userId) {
     const snapshot = await getDocs(
-      collection(db, 'followRelationships', userId, 'followers')
+      query(
+        collection(db, 'followRelationships', userId, 'followers'),
+        where('status', '==', 'active')
+      )
     );
 
     return mapRelationships(snapshot.docs, 'active');
@@ -164,7 +167,8 @@ export const firebaseFollowService: FollowService = {
   async listFollowing(userId) {
     const followingQuery = query(
       collectionGroup(db, 'followers'),
-      where('followerId', '==', userId)
+      where('followerId', '==', userId),
+      where('status', '==', 'active')
     );
     const snapshot = await getDocs(followingQuery);
 

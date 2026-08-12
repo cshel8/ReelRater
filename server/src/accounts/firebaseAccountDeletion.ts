@@ -26,6 +26,64 @@ async function deleteQuery(
   await writer.close();
 }
 
+const readCounter = (value: unknown) =>
+  typeof value === 'number' && Number.isSafeInteger(value) && value >= 0
+    ? value
+    : 0;
+
+async function deleteRelationshipAndRepairSurvivorCount(
+  relationshipReference: FirebaseFirestore.DocumentReference,
+  deletedUserId: string
+) {
+  await firestore.runTransaction(async (transaction) => {
+    const relationship = await transaction.get(relationshipReference);
+    if (!relationship.exists) {
+      return;
+    }
+    const data = relationship.data() ?? {};
+    const followerId = data.followerId;
+    const followedUserId = data.followedUserId;
+    const active = data.status === 'active';
+    if (!active || typeof followerId !== 'string' || typeof followedUserId !== 'string') {
+      transaction.delete(relationshipReference);
+      return;
+    }
+
+    const survivorId =
+      followerId === deletedUserId ? followedUserId : followerId;
+    if (survivorId === deletedUserId) {
+      transaction.delete(relationshipReference);
+      return;
+    }
+    const survivorReference = firestore.doc(`users/${survivorId}`);
+    const survivor = await transaction.get(survivorReference);
+    if (!survivor.exists) {
+      transaction.delete(relationshipReference);
+      return;
+    }
+    const counterField =
+      followerId === deletedUserId ? 'followerCount' : 'followingCount';
+    transaction.delete(relationshipReference);
+    transaction.update(survivorReference, {
+      [counterField]: Math.max(0, readCounter((survivor.data() ?? {})[counterField]) - 1),
+    });
+  });
+}
+
+async function deleteRelationshipsAndRepairCounts(userId: string) {
+  const [incoming, outgoing] = await Promise.all([
+    firestore.collection(`followRelationships/${userId}/followers`).get(),
+    firestore.collectionGroup('followers').where('followerId', '==', userId).get(),
+  ]);
+  const relationships = new Map<string, FirebaseFirestore.DocumentReference>();
+  for (const document of [...incoming.docs, ...outgoing.docs]) {
+    relationships.set(document.ref.path, document.ref);
+  }
+  for (const reference of relationships.values()) {
+    await deleteRelationshipAndRepairSurvivorCount(reference, userId);
+  }
+}
+
 export const firebaseAccountIdentityVerifier: AccountIdentityVerifier = {
   async verify(idToken) {
     const decoded = await auth.verifyIdToken(idToken, true);
@@ -45,12 +103,7 @@ export const firebaseAccountDataDeleter: AccountDataDeleter = {
     await deleteQuery(
       firestore.collection('reviews').where('userId', '==', userId)
     );
-    await firestore.recursiveDelete(
-      firestore.doc(`followRelationships/${userId}`)
-    );
-    await deleteQuery(
-      firestore.collectionGroup('followers').where('followerId', '==', userId)
-    );
+    await deleteRelationshipsAndRepairCounts(userId);
 
     const writer = firestore.bulkWriter();
     writer.delete(profileReference);

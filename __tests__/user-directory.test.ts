@@ -77,6 +77,8 @@ describe('Firebase user directory service', () => {
         handleNormalized: 'conniefilms',
         profileImage: null,
         accountPrivacy: 'private',
+        followerCount: null,
+        followingCount: null,
       },
     ]);
   });
@@ -104,6 +106,8 @@ describe('Firebase user directory service', () => {
       handleNormalized: 'alexreviews',
       profileImage: 'https://example.com/avatar.jpg',
       accountPrivacy: 'private',
+      followerCount: null,
+      followingCount: null,
     });
   });
 });

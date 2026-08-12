@@ -26,6 +26,12 @@ type ConnectionItem = {
 
 type ConnectionListProps = {
   mode: ConnectionMode;
+  /**
+   * Omit this for the signed-in user's own social graph. Supplying another
+   * profile ID creates a read-only list; Firestore remains responsible for
+   * deciding whether that viewer may load it.
+   */
+  userId?: string;
 };
 
 function ConnectionAvatar({ profile }: { profile: PublicUserProfile }) {
@@ -42,8 +48,10 @@ function ConnectionAvatar({ profile }: { profile: PublicUserProfile }) {
   );
 }
 
-export function ConnectionList({ mode }: ConnectionListProps) {
+export function ConnectionList({ mode, userId }: ConnectionListProps) {
   const currentUserId = userStore((state) => state.userId);
+  const profileUserId = userId ?? currentUserId;
+  const isOwnProfile = profileUserId === currentUserId;
   const [connections, setConnections] = useState<ConnectionItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -52,7 +60,7 @@ export function ConnectionList({ mode }: ConnectionListProps) {
 
   const loadConnections = useCallback(
     async (refreshing = false) => {
-      if (!currentUserId) {
+      if (!currentUserId || !profileUserId) {
         setConnections([]);
         setError('Sign in to view these connections.');
         setIsLoading(false);
@@ -70,8 +78,8 @@ export function ConnectionList({ mode }: ConnectionListProps) {
       try {
         const relationships =
           mode === 'followers'
-            ? await followService.listFollowers(currentUserId)
-            : await followService.listFollowing(currentUserId);
+            ? await followService.listFollowers(profileUserId)
+            : await followService.listFollowing(profileUserId);
         const userIds = relationships.map((relationship) =>
           mode === 'followers'
             ? relationship.followerId
@@ -99,7 +107,7 @@ export function ConnectionList({ mode }: ConnectionListProps) {
         setIsRefreshing(false);
       }
     },
-    [currentUserId, mode]
+    [currentUserId, mode, profileUserId]
   );
 
   useFocusEffect(
@@ -109,7 +117,7 @@ export function ConnectionList({ mode }: ConnectionListProps) {
   );
 
   const removeConnection = async (item: ConnectionItem) => {
-    if (!currentUserId || changingUserId) {
+    if (!currentUserId || !isOwnProfile || changingUserId) {
       return;
     }
 
@@ -198,14 +206,14 @@ export function ConnectionList({ mode }: ConnectionListProps) {
           />
           <Text style={styles.emptyTitle}>
             {error
-              ? 'Unable to load people'
+              ? 'Connections unavailable'
               : mode === 'followers'
                 ? 'No followers yet'
                 : 'Not following anyone yet'}
           </Text>
           <Text style={styles.emptyText}>
             {error
-              ? 'Check your connection and Firestore follower rules.'
+              ? 'This list may be private, or your connection may be unavailable.'
               : mode === 'followers'
                 ? 'People who follow you will appear here.'
                 : 'Use Find People on your profile to discover movie fans.'}
@@ -239,24 +247,26 @@ export function ConnectionList({ mode }: ConnectionListProps) {
             </View>
           </Pressable>
 
-          <Pressable
-            accessibilityRole="button"
-            disabled={changingUserId === item.relationshipUserId}
-            onPress={() => confirmRemove(item)}
-            style={({ pressed }) => [
-              styles.actionButton,
-              (pressed || changingUserId === item.relationshipUserId) &&
-                styles.pressed,
-            ]}
-          >
-            {changingUserId === item.relationshipUserId ? (
-              <ActivityIndicator color={colors.reviewAccentText} size="small" />
-            ) : (
-              <Text style={styles.actionText}>
-                {mode === 'followers' ? 'Remove' : 'Unfollow'}
-              </Text>
-            )}
-          </Pressable>
+          {isOwnProfile ? (
+            <Pressable
+              accessibilityRole="button"
+              disabled={changingUserId === item.relationshipUserId}
+              onPress={() => confirmRemove(item)}
+              style={({ pressed }) => [
+                styles.actionButton,
+                (pressed || changingUserId === item.relationshipUserId) &&
+                  styles.pressed,
+              ]}
+            >
+              {changingUserId === item.relationshipUserId ? (
+                <ActivityIndicator color={colors.reviewAccentText} size="small" />
+              ) : (
+                <Text style={styles.actionText}>
+                  {mode === 'followers' ? 'Remove' : 'Unfollow'}
+                </Text>
+              )}
+            </Pressable>
+          ) : null}
         </View>
       )}
       showsVerticalScrollIndicator={false}

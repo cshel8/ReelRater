@@ -2,7 +2,12 @@ import { fireEvent, render, waitFor } from '@testing-library/react-native';
 import { Alert } from 'react-native';
 import { router } from 'expo-router';
 import Signup from '@/app/(auth)/signup';
-import { authService, profileService, settingsService } from '@/services';
+import {
+  authService,
+  profileService,
+  settingsService,
+  socialGraphInitializationService,
+} from '@/services';
 
 jest.mock('@expo/vector-icons', () => ({
   Ionicons: 'Ionicons',
@@ -36,6 +41,9 @@ jest.mock('@/services', () => ({
   settingsService: {
     initializeForNewUser: jest.fn(),
   },
+  socialGraphInitializationService: {
+    initializeCounters: jest.fn(),
+  },
 }));
 
 describe('Signup screen', () => {
@@ -53,6 +61,8 @@ describe('Signup screen', () => {
     (
       settingsService.initializeForNewUser as jest.Mock
     ).mockResolvedValue(undefined);
+    (socialGraphInitializationService.initializeCounters as jest.Mock)
+      .mockResolvedValue(undefined);
   });
 
   it('starts with empty account fields instead of cached profile values', () => {
@@ -103,6 +113,9 @@ describe('Signup screen', () => {
       expect(settingsService.initializeForNewUser).toHaveBeenCalledWith(
         'user-1',
         'followers'
+      );
+      expect(socialGraphInitializationService.initializeCounters).toHaveBeenCalledWith(
+        'user-1'
       );
       expect(router.replace).toHaveBeenCalledWith('/home');
     });

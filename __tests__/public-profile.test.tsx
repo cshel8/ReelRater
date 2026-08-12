@@ -48,6 +48,8 @@ describe('Public profile screen', () => {
       handleNormalized: 'alexmovies',
       profileImage: null,
       accountPrivacy: 'public',
+      followerCount: 12,
+      followingCount: 8,
     });
     (followService.getStatus as jest.Mock).mockResolvedValue(null);
     (followService.follow as jest.Mock).mockResolvedValue(undefined);
@@ -64,7 +66,7 @@ describe('Public profile screen', () => {
   it('follows the viewed account and updates the button state', async () => {
     const screen = render(<PublicProfileScreen />);
 
-    fireEvent.press(await screen.findByText('Follow'));
+    fireEvent.press(await screen.findByRole('button', { name: 'Follow' }));
 
     await waitFor(() => {
       expect(followService.follow).toHaveBeenCalledWith(
@@ -73,6 +75,62 @@ describe('Public profile screen', () => {
       );
       expect(screen.getByText('Following')).toBeTruthy();
     });
+  });
+
+  it('shows another profile\'s counts and opens public connection lists', async () => {
+    const screen = render(<PublicProfileScreen />);
+
+    expect(await screen.findByText('12')).toBeTruthy();
+    expect(screen.getByText('8')).toBeTruthy();
+
+    fireEvent.press(screen.getByLabelText("View Alex's followers"));
+    expect(router.push).toHaveBeenCalledWith({
+      pathname: '/profile/followers',
+      params: { userId: 'other-user' },
+    });
+
+    fireEvent.press(screen.getByLabelText("View Alex's following"));
+    expect(router.push).toHaveBeenCalledWith({
+      pathname: '/profile/following',
+      params: { userId: 'other-user' },
+    });
+  });
+
+  it('keeps private connection lists unavailable until the viewer is active', async () => {
+    (userDirectoryService.getById as jest.Mock).mockResolvedValue({
+      id: 'other-user',
+      displayName: 'Alex',
+      handle: 'AlexMovies',
+      handleNormalized: 'alexmovies',
+      profileImage: null,
+      accountPrivacy: 'private',
+      followerCount: 12,
+      followingCount: 8,
+    });
+    (followService.getStatus as jest.Mock).mockReset().mockResolvedValue('pending');
+    const screen = render(<PublicProfileScreen />);
+
+    expect(
+      await screen.findByText('Follow @AlexMovies to view their followers and following.')
+    ).toBeTruthy();
+    expect(
+      screen.getByLabelText("View Alex's followers").props.accessibilityState
+        .disabled
+    ).toBe(true);
+    expect(
+      screen.getByLabelText("View Alex's following").props.accessibilityState
+        .disabled
+    ).toBe(true);
+  });
+
+  it('keeps a readable profile available when follow-status loading fails', async () => {
+    (followService.getStatus as jest.Mock).mockReset().mockRejectedValue(
+      new Error('Network unavailable')
+    );
+    const screen = render(<PublicProfileScreen />);
+
+    expect(await screen.findByText('Alex')).toBeTruthy();
+    expect(screen.queryByText('Profile unavailable')).toBeNull();
   });
 
   it('distinguishes public-only access from an active follower with no reviews', async () => {
@@ -174,6 +232,16 @@ describe('Public profile screen', () => {
         authorId: 'other-user',
         reviewId: 'review-1',
       },
+    });
+  });
+
+  it('keeps social-list navigation inside the Community stack when requested', async () => {
+    const screen = render(<PublicProfileScreen routeBase="community" />);
+
+    fireEvent.press(await screen.findByLabelText("View Alex's followers"));
+    expect(router.push).toHaveBeenCalledWith({
+      pathname: '/community/followers',
+      params: { userId: 'other-user' },
     });
   });
 

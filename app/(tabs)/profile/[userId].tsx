@@ -116,15 +116,9 @@ export default function PublicProfileScreen({
       setIsLoading(true);
       setError(null);
       try {
-        const [result, relationshipStatus] = await Promise.all([
-          userDirectoryService.getById(userId),
-          currentUserId && currentUserId !== userId
-            ? followService.getStatus(currentUserId, userId)
-            : Promise.resolve(null),
-        ]);
+        const result = await userDirectoryService.getById(userId);
         if (active) {
           setProfile(result);
-          setFollowStatus(relationshipStatus);
           if (!result) {
             setError('This profile could not be found.');
           }
@@ -146,6 +140,35 @@ export default function PublicProfileScreen({
     };
 
     void loadProfile();
+    return () => {
+      active = false;
+    };
+  }, [retryCount, userId]);
+
+  useEffect(() => {
+    let active = true;
+
+    const loadFollowStatus = async () => {
+      if (!currentUserId || !userId || currentUserId === userId) {
+        setFollowStatus(null);
+        return;
+      }
+
+      try {
+        const status = await followService.getStatus(currentUserId, userId);
+        if (active) {
+          setFollowStatus(status);
+        }
+      } catch {
+        // A relationship-status error must not make a readable profile fail.
+        // Private social lists remain unavailable until active status is known.
+        if (active) {
+          setFollowStatus(null);
+        }
+      }
+    };
+
+    void loadFollowStatus();
     return () => {
       active = false;
     };
@@ -247,9 +270,10 @@ export default function PublicProfileScreen({
     setIsChangingFollow(true);
     try {
       await followService.follow(currentUserId, userId);
-      setFollowStatus(
-        (await followService.getStatus(currentUserId, userId)) ?? 'active'
-      );
+      const nextStatus =
+        (await followService.getStatus(currentUserId, userId)) ?? 'active';
+      setFollowStatus(nextStatus);
+      setRetryCount((count) => count + 1);
       setReviewRetryCount((count) => count + 1);
     } catch (followError) {
       Alert.alert(
@@ -272,6 +296,7 @@ export default function PublicProfileScreen({
     try {
       await followService.unfollow(currentUserId, userId);
       setFollowStatus(null);
+      setRetryCount((count) => count + 1);
       setReviewRetryCount((count) => count + 1);
     } catch (unfollowError) {
       Alert.alert(
@@ -334,6 +359,11 @@ export default function PublicProfileScreen({
     );
   }
 
+  const canViewConnections =
+    profile.accountPrivacy === 'public' ||
+    currentUserId === profile.id ||
+    followStatus === 'active';
+
   return (
     <ScrollView
       contentContainerStyle={styles.container}
@@ -356,6 +386,59 @@ export default function PublicProfileScreen({
           <Ionicons color="#737A86" name="lock-closed" size={12} />
           <Text style={styles.privateBadgeText}>Private account</Text>
         </View>
+      ) : null}
+
+      <View style={styles.connectionCounts}>
+        <Pressable
+          accessibilityLabel={`View ${profile.displayName}'s followers`}
+          accessibilityRole="button"
+          disabled={!canViewConnections}
+          onPress={() =>
+            router.push({
+              pathname:
+                routeBase === 'community'
+                  ? '/community/followers'
+                  : '/profile/followers',
+              params: { userId: profile.id },
+            })
+          }
+          style={({ pressed }) => [
+            styles.connectionCount,
+            !canViewConnections && styles.connectionCountDisabled,
+            pressed && canViewConnections && styles.buttonPressed,
+          ]}
+        >
+          <Text style={styles.connectionNumber}>{profile.followerCount ?? '—'}</Text>
+          <Text style={styles.connectionLabel}>Followers</Text>
+        </Pressable>
+        <View style={styles.connectionDivider} />
+        <Pressable
+          accessibilityLabel={`View ${profile.displayName}'s following`}
+          accessibilityRole="button"
+          disabled={!canViewConnections}
+          onPress={() =>
+            router.push({
+              pathname:
+                routeBase === 'community'
+                  ? '/community/following'
+                  : '/profile/following',
+              params: { userId: profile.id },
+            })
+          }
+          style={({ pressed }) => [
+            styles.connectionCount,
+            !canViewConnections && styles.connectionCountDisabled,
+            pressed && canViewConnections && styles.buttonPressed,
+          ]}
+        >
+          <Text style={styles.connectionNumber}>{profile.followingCount ?? '—'}</Text>
+          <Text style={styles.connectionLabel}>Following</Text>
+        </Pressable>
+      </View>
+      {!canViewConnections && profile.accountPrivacy === 'private' ? (
+        <Text style={styles.connectionsPrivateText}>
+          Follow @{profile.handle} to view their followers and following.
+        </Text>
       ) : null}
 
       {currentUserId && currentUserId !== profile.id ? (
@@ -594,6 +677,42 @@ const styles = StyleSheet.create({
     color: '#737A86',
     fontSize: 12,
     fontWeight: '600',
+  },
+  connectionCounts: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 22,
+  },
+  connectionCount: {
+    alignItems: 'center',
+    minWidth: 104,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  connectionCountDisabled: {
+    opacity: 0.55,
+  },
+  connectionNumber: {
+    color: '#1F2937',
+    fontSize: 17,
+    fontWeight: '700',
+  },
+  connectionLabel: {
+    color: '#737A86',
+    fontSize: 13,
+    marginTop: 3,
+  },
+  connectionDivider: {
+    backgroundColor: '#E4E6EA',
+    height: 30,
+    width: 1,
+  },
+  connectionsPrivateText: {
+    color: '#858B96',
+    fontSize: 13,
+    lineHeight: 18,
+    marginTop: 8,
+    textAlign: 'center',
   },
   followButton: {
     minWidth: 150,

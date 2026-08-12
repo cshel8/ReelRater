@@ -69,6 +69,8 @@ describe('Community feed service', () => {
       handleNormalized: 'alexmovies',
       profileImage: null,
       accountPrivacy: 'public',
+      followerCount: 0,
+      followingCount: 0,
     });
     const communityService = createCommunityFeedService(
       services.followService,

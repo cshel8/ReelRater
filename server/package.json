@@ -10,6 +10,7 @@
     "dev": "node --env-file-if-exists=.env ./node_modules/tsx/dist/cli.mjs watch src/server.ts",
     "build": "tsc",
     "start": "node --env-file-if-exists=.env dist/server.js",
+    "reconcile-social-counters": "node --env-file-if-exists=.env ./node_modules/tsx/dist/cli.mjs src/social/reconcileSocialCountersCommand.ts",
     "test": "tsx --test src/*.test.ts src/**/*.test.ts"
   },
   "dependencies": {

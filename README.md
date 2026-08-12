@@ -24,6 +24,32 @@ npx expo start
 
 From the Expo terminal, press `i` to open the iOS Simulator, `a` for Android, or scan the QR code using Expo Go.
 
+## Development architecture
+
+ReelRater is an Expo/React Native mobile app backed by Firebase Authentication,
+Cloud Firestore, and local SQLite storage for offline review work. A separate
+local Express server in `server/` provides trusted server-side operations and
+keeps external-service credentials out of the mobile app.
+
+The mobile app reads normal application data from Firestore according to
+Firestore Security Rules. Authenticated social mutations—following,
+unfollowing, approving or rejecting requests, and removing followers—go
+through the Express API, which verifies a Firebase ID token and performs the
+operation through Firebase Admin SDK transactions.
+
+`followRelationships` remains the source of truth for who follows whom.
+`users/{uid}.followerCount` and `followingCount` are trusted, backend-managed
+summary fields: mobile clients may read them but cannot directly write them.
+Pending relationships do not affect either count.
+
+Firestore configuration is maintained alongside the app:
+
+- `firestore.rules` defines client authorization.
+- `firestore.indexes.json` defines composite indexes and single-field
+  overrides.
+- `firebase.json` points Firebase tooling at those files and defines the local
+  Firestore Emulator.
+
 ## API server
 
 The API is a separate Express application in `server/`. Use Node 22 and install its dependencies independently:
@@ -173,6 +199,19 @@ a service-account file mounted from a deployment secret and referenced by
 The mobile app refuses to send an account token to a non-HTTPS remote API.
 Localhost HTTP remains available for development.
 
+### Social graph API
+
+The local Express API exposes protected `/api/v1/social` endpoints for normal
+social-graph mutations. The app reaches them through `apiBaseUrl`, which
+defaults to `http://127.0.0.1:3000` and can later point at a deployed HTTPS
+server through `EXPO_PUBLIC_API_BASE_URL` without changing screen code.
+
+For local development, start the Express server before testing follow-related
+flows in the app. Media search needs the local TMDB configuration described
+above. Trusted social operations and account deletion additionally require the
+server to have Firebase Admin Application Default Credentials; keep all such
+local configuration outside Git and never expose it to Expo client variables.
+
 Run the server checks with:
 
 ```bash
@@ -180,5 +219,64 @@ cd server
 npm test
 npm run build
 ```
+
+### Trusted social-counter reconciliation
+
+`users/{uid}.followerCount` and `followingCount` are maintained by the
+trusted social API during normal relationship changes. Existing profiles can
+be repaired or backfilled with a separate Admin SDK maintenance command:
+
+```bash
+cd server
+npm run reconcile-social-counters
+```
+
+Use `npm run reconcile-social-counters -- --batch-size=50` to choose a smaller
+scan page. The command requires Application Default Credentials with Firestore
+read/write access, plus `FIREBASE_PROJECT_ID` when the default project is not
+correct. For a local service-account file, set `GOOGLE_APPLICATION_CREDENTIALS`
+to its path before running the command. Never place those credentials in Expo
+environment variables or commit them.
+
+The command scans existing `users` documents and relationship documents,
+counts only relationships whose status is `active`, and writes absolute totals
+to existing profiles. Pending relationships do not count. Its JSON result
+reports scanned records, updated/unchanged profiles, and dangling relationships
+that referenced a missing profile. Re-running it is safe: it recalculates and
+replaces totals instead of applying increments.
+
+If a read or write fails, the command exits non-zero. Earlier profile writes
+may already have completed, but a later rerun safely recalculates every total.
+Verify completion by checking its JSON output, then inspect representative
+`users/{uid}` documents against their active follower relationships. This is an
+administrator-only command; it is not exposed through the mobile API and does
+not replace the new-account-only `/api/v1/social/counters` initialization route.
+
+## Firestore Emulator security-rule tests
+
+Firestore Security Rules are tested locally with the Firestore Emulator rather
+than against the production Firebase project. Run the suite from the repository
+root:
+
+```bash
+npm run test:firestore-rules
+```
+
+The command starts an isolated emulator project named `reelrater-rules-test`,
+loads the repository's current `firestore.rules`, runs allow/deny tests, and
+then shuts the emulator down. It does not deploy rules or indexes and does not
+read or modify production Firebase data.
+
+For a fresh setup, run `npm ci` first. The locally installed Firebase CLI will
+download the Firestore Emulator on first use, and the Firestore Emulator
+requires a supported Java runtime. No Firebase service-account credential is
+required for these isolated Emulator tests.
+
+The suite covers the main authorization boundaries: profiles and trusted
+counters, user settings, review visibility and ownership, direct-client
+social-mutation denial, public/private follower and following lists, and the
+active-only Community following query. The ordinary Expo test command excludes
+these Node/Emulator tests; run `npm test` for app tests and the command above
+for Firestore rule tests.
 
 See the [Expo Router documentation](https://docs.expo.dev/routing/introduction/) for routing information.

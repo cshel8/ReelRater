@@ -1,0 +1,163 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function ownsUser(userId) {
+      return signedIn() && request.auth.uid == userId;
+    }
+
+    function privateAccount(userId) {
+      return ('accountPrivacy' in get(
+        /databases/$(database)/documents/users/$(userId)
+      ).data) && get(
+        /databases/$(database)/documents/users/$(userId)
+      ).data.accountPrivacy == 'private';
+    }
+
+    function activeFollower(userId) {
+      return signedIn()
+        && exists(
+          /databases/$(database)/documents/followRelationships/$(userId)/followers/$(request.auth.uid)
+        )
+        && get(
+          /databases/$(database)/documents/followRelationships/$(userId)/followers/$(request.auth.uid)
+        ).data.status == 'active';
+    }
+
+    // Public social graphs are readable by signed-in users. Private social
+    // graphs are readable by their owner and active followers only.
+    function canViewSocialGraph(userId) {
+      return ownsUser(userId) || !privateAccount(userId) || activeFollower(userId);
+    }
+
+    match /users/{userId} {
+      allow create: if ownsUser(userId)
+        && request.resource.data.keys().hasOnly([
+          'displayName',
+          'handle',
+          'handleNormalized',
+          'accountPrivacy',
+          'profileImage',
+          'createdAt'
+        ])
+        && request.resource.data.displayName is string
+        && request.resource.data.displayName.size() > 0
+        && request.resource.data.displayName.size() <= 50
+        && request.resource.data.handle is string
+        && request.resource.data.handleNormalized is string
+        && request.resource.data.accountPrivacy in ['public', 'private']
+        && request.resource.data.handleNormalized.matches('^[a-z0-9_]{3,20}$')
+        && getAfter(
+          /databases/$(database)/documents/handles/$(request.resource.data.handleNormalized)
+        ).data.userId == userId;
+
+      allow read: if signedIn();
+
+      allow update: if ownsUser(userId)
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['displayName', 'profileImage', 'accountPrivacy'])
+        && (!('accountPrivacy' in request.resource.data)
+          || request.resource.data.accountPrivacy in ['public', 'private']);
+
+      allow delete: if false;
+    }
+
+    match /userSettings/{userId} {
+      allow read: if ownsUser(userId);
+
+      allow create, update: if ownsUser(userId)
+        && request.resource.data.keys().hasOnly([
+          'defaultReviewVisibility',
+          'defaultMediaFilter',
+          'defaultSort',
+          'updatedAt'
+        ])
+        && request.resource.data.defaultReviewVisibility in [
+          'public', 'followers', 'private'
+        ]
+        && (!('defaultMediaFilter' in request.resource.data)
+          || request.resource.data.defaultMediaFilter in ['all', 'movie', 'tv'])
+        && (!('defaultSort' in request.resource.data)
+          || request.resource.data.defaultSort in [
+            'newest', 'oldest', 'highestRated', 'lowestRated'
+          ])
+        && request.resource.data.updatedAt == request.time;
+
+      allow delete: if false;
+    }
+
+    match /handles/{handleNormalized} {
+      allow read: if signedIn();
+
+      allow create: if signedIn()
+        && handleNormalized.matches('^[a-z0-9_]{3,20}$')
+        && request.resource.data.keys().hasOnly([
+          'userId', 'handle', 'handleNormalized'
+        ])
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.handle is string
+        && request.resource.data.handleNormalized == handleNormalized;
+
+      allow update, delete: if false;
+    }
+
+    match /reviews/{reviewId} {
+      allow create: if signedIn()
+        && request.resource.data.userId == request.auth.uid
+        && (!('visibility' in request.resource.data)
+          || request.resource.data.visibility in [
+            'public', 'followers', 'private'
+          ]);
+
+      allow read: if signedIn() && (
+        resource.data.userId == request.auth.uid
+        || resource.data.visibility == 'public'
+        || (resource.data.visibility == 'followers'
+          && activeFollower(resource.data.userId))
+      );
+
+      allow update: if signedIn()
+        && resource.data.userId == request.auth.uid
+        && request.resource.data.userId == request.auth.uid
+        && (!('visibility' in request.resource.data)
+          || request.resource.data.visibility in [
+            'public', 'followers', 'private'
+          ]);
+
+      allow delete: if signedIn()
+        && resource.data.userId == request.auth.uid;
+    }
+
+    // This collection-group rule authorizes a user's Following list. It
+    // intentionally exposes active relationships only, never pending requests.
+    match /{path=**}/followers/{followerId} {
+      allow list: if signedIn()
+        && resource.data.status == 'active'
+        && canViewSocialGraph(resource.data.followerId);
+    }
+
+    match /followRelationships/{followedUserId}/followers/{followerId} {
+      // Participants can inspect their own relationship, including a pending
+      // request. Lists use the narrower rules below.
+      allow get: if signedIn()
+        && (request.auth.uid == followerId || request.auth.uid == followedUserId);
+
+      // Followers list: public accounts are visible to everyone signed in;
+      // private accounts are visible to the owner and active followers. Owners
+      // can also list their pending requests.
+      allow list: if signedIn() && (
+        ownsUser(followedUserId)
+        || (resource.data.status == 'active'
+          && canViewSocialGraph(followedUserId))
+      );
+
+      // Relationship mutations and profile counters are maintained only by
+      // the trusted Admin SDK social API. Admin writes bypass these rules.
+      allow create, update, delete: if false;
+    }
+  }
+}

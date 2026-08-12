@@ -1,0 +1,24 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "followers",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        { "fieldPath": "followerId", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": [
+    {
+      "collectionGroup": "followers",
+      "fieldPath": "followerId",
+      "indexes": [
+        {
+          "order": "ASCENDING",
+          "queryScope": "COLLECTION_GROUP"
+        }
+      ]
+    }
+  ]
+}
