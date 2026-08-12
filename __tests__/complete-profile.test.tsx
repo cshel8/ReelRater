@@ -1,7 +1,11 @@
 import { fireEvent, render, waitFor } from '@testing-library/react-native';
 import { router } from 'expo-router';
 import CompleteProfile from '@/app/(auth)/complete-profile';
-import { profileService, settingsService } from '@/services';
+import {
+  profileService,
+  settingsService,
+  socialGraphInitializationService,
+} from '@/services';
 
 jest.mock('@expo/vector-icons', () => ({
   Ionicons: 'Ionicons',
@@ -29,6 +33,7 @@ jest.mock('@/services', () => ({
   authService: { signOut: jest.fn() },
   profileService: { create: jest.fn() },
   settingsService: { initializeForNewUser: jest.fn() },
+  socialGraphInitializationService: { initializeCounters: jest.fn() },
 }));
 
 describe('Complete profile screen', () => {
@@ -44,7 +49,11 @@ describe('Complete profile screen', () => {
       handleNormalized: 'connormovies',
       profileImage: null,
       accountPrivacy: 'public',
+      followerCount: null,
+      followingCount: null,
     });
+    (socialGraphInitializationService.initializeCounters as jest.Mock)
+      .mockResolvedValue(undefined);
     const { getByText } = render(<CompleteProfile />);
 
     fireEvent.press(getByText('Continue'));
@@ -59,6 +68,9 @@ describe('Complete profile screen', () => {
       expect(settingsService.initializeForNewUser).toHaveBeenCalledWith(
         'user-1',
         'private'
+      );
+      expect(socialGraphInitializationService.initializeCounters).toHaveBeenCalledWith(
+        'user-1'
       );
       expect(router.replace).toHaveBeenCalledWith('/home');
     });

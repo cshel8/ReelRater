@@ -19,6 +19,8 @@ interface UserProfileData {
   handleNormalized?: unknown;
   profileImage?: unknown;
   accountPrivacy?: unknown;
+  followerCount?: unknown;
+  followingCount?: unknown;
 }
 
 function toPublicProfile(
@@ -41,6 +43,18 @@ function toPublicProfile(
     profileImage:
       typeof data.profileImage === 'string' ? data.profileImage : null,
     accountPrivacy: data.accountPrivacy === 'private' ? 'private' : 'public',
+    followerCount:
+      typeof data.followerCount === 'number' &&
+      Number.isSafeInteger(data.followerCount) &&
+      data.followerCount >= 0
+        ? data.followerCount
+        : null,
+    followingCount:
+      typeof data.followingCount === 'number' &&
+      Number.isSafeInteger(data.followingCount) &&
+      data.followingCount >= 0
+        ? data.followingCount
+        : null,
   };
 }
 

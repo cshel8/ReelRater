@@ -219,6 +219,10 @@ export interface FollowService {
   ): Promise<FollowRelationship['status'] | null>;
 }
 
+export interface SocialGraphInitializationService {
+  initializeCounters(userId: string): Promise<void>;
+}
+
 export interface UserDirectoryService {
   getById(userId: string): Promise<PublicUserProfile | null>;
   searchByHandle(

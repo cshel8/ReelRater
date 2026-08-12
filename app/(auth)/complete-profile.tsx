@@ -10,7 +10,12 @@ import {
 } from 'react-native';
 import { AccountPrivacySelector } from '@/components/profile/AccountPrivacySelector';
 import { ReviewVisibilitySelector } from '@/components/reviews/ReviewVisibilitySelector';
-import { authService, profileService, settingsService } from '@/services';
+import {
+  authService,
+  profileService,
+  settingsService,
+  socialGraphInitializationService,
+} from '@/services';
 import { userStore } from '@/store/userStore';
 import type { AccountPrivacy, ReviewVisibility } from '@/types/domain';
 import { formatHandle, isValidHandle, normalizeHandle } from '@/utils/handle';
@@ -55,6 +60,7 @@ export default function CompleteProfile() {
         handleNormalized: normalizeHandle(formattedHandle),
         accountPrivacy,
       });
+      await socialGraphInitializationService.initializeCounters(userId);
       await settingsService.initializeForNewUser(
         userId,
         defaultVisibility

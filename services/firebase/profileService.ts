@@ -8,6 +8,12 @@ function readAccountPrivacy(value: unknown): AccountPrivacy {
   return value === 'private' ? 'private' : 'public';
 }
 
+function readCounter(value: unknown): number | null {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0
+    ? value
+    : null;
+}
+
 export const firebaseProfileService: ProfileService = {
   async create(userId, input) {
     const handleReference = doc(db, 'handles', input.handleNormalized);
@@ -36,6 +42,8 @@ export const firebaseProfileService: ProfileService = {
           accountPrivacy: readAccountPrivacy(
             data.accountPrivacy ?? input.accountPrivacy
           ),
+          followerCount: readCounter(data.followerCount),
+          followingCount: readCounter(data.followingCount),
         };
       }
 
@@ -62,6 +70,8 @@ export const firebaseProfileService: ProfileService = {
           ...input,
           profileImage: data.profileImage ?? null,
           accountPrivacy: input.accountPrivacy,
+          followerCount: readCounter(data.followerCount),
+          followingCount: readCounter(data.followingCount),
         };
       }
 
@@ -78,7 +88,13 @@ export const firebaseProfileService: ProfileService = {
         createdAt: serverTimestamp(),
       });
 
-      return { id: userId, ...input, profileImage: null };
+      return {
+        id: userId,
+        ...input,
+        profileImage: null,
+        followerCount: null,
+        followingCount: null,
+      };
     });
   },
 
@@ -94,6 +110,8 @@ export const firebaseProfileService: ProfileService = {
       handleNormalized: data.handleNormalized ?? '',
       profileImage: data.profileImage ?? null,
       accountPrivacy: readAccountPrivacy(data.accountPrivacy),
+      followerCount: readCounter(data.followerCount),
+      followingCount: readCounter(data.followingCount),
     };
   },
 

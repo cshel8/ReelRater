@@ -13,6 +13,9 @@ import type {
   AccountDataDeleter,
   AccountIdentityVerifier,
 } from './accounts/types.js';
+import { createSocialRouter } from './social/socialRoutes.js';
+import { firebaseSocialGraph } from './social/firebaseSocialGraph.js';
+import type { SocialGraphService } from './social/types.js';
 
 export const createApp = (
   options: {
@@ -21,6 +24,7 @@ export const createApp = (
     movieCatalog?: MediaCatalogService;
     accountIdentityVerifier?: AccountIdentityVerifier;
     accountDataDeleter?: AccountDataDeleter;
+    socialGraph?: SocialGraphService;
   } = {}
 ) => {
   const app = express();
@@ -50,6 +54,13 @@ export const createApp = (
     createAccountRouter(
       options.accountIdentityVerifier ?? firebaseAccountIdentityVerifier,
       options.accountDataDeleter ?? firebaseAccountDataDeleter
+    )
+  );
+  app.use(
+    '/api/v1/social',
+    createSocialRouter(
+      options.accountIdentityVerifier ?? firebaseAccountIdentityVerifier,
+      options.socialGraph ?? firebaseSocialGraph
     )
   );
 

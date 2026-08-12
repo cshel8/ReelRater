@@ -1,7 +1,8 @@
 // Swap these adapters for HTTP implementations when the AWS API is ready.
 export { firebaseAuthService as authService } from '@/services/firebase/authService';
 export { firebaseAccountDeletionService as accountDeletionService } from '@/services/firebase/accountDeletionService';
-export { firebaseFollowService as followService } from '@/services/firebase/followService';
+export { httpFollowService as followService } from '@/services/http/followService';
+export { httpSocialGraphInitializationService as socialGraphInitializationService } from '@/services/http/socialGraphService';
 export { firebaseProfileService as profileService } from '@/services/firebase/profileService';
 export { firebaseSettingsService as settingsService } from '@/services/firebase/settingsService';
 export { firebaseUserDirectoryService as userDirectoryService } from '@/services/firebase/userDirectoryService';

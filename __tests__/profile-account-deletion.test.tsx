@@ -46,7 +46,16 @@ jest.mock('@/services', () => ({
     listPendingRequests: jest.fn().mockResolvedValue([]),
   },
   profileService: {
-    get: jest.fn().mockResolvedValue(null),
+    get: jest.fn().mockResolvedValue({
+      id: 'user-1',
+      displayName: 'Connor',
+      handle: 'ConnorMovies',
+      handleNormalized: 'connormovies',
+      profileImage: null,
+      accountPrivacy: 'public',
+      followerCount: 0,
+      followingCount: 0,
+    }),
     uploadImage: jest.fn(),
   },
 }));
@@ -78,7 +87,7 @@ test('requires warning confirmation and the current password before deletion', a
   });
 });
 
-test('hides follower and following counts while offline', async () => {
+test('keeps the last loaded follower and following counts visible while offline', async () => {
   const screen = render(<Profile />);
   await screen.findByText('Followers');
   const networkListener = (NetInfo.addEventListener as jest.Mock).mock
@@ -88,6 +97,6 @@ test('hides follower and following counts while offline', async () => {
     networkListener({ isConnected: false, isInternetReachable: false });
   });
 
-  expect(screen.queryByText('Followers')).toBeNull();
-  expect(screen.queryByText('Following')).toBeNull();
+  expect(screen.getByText('Followers')).toBeTruthy();
+  expect(screen.getByText('Following')).toBeTruthy();
 });

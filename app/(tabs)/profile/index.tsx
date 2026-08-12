@@ -42,7 +42,6 @@ export default function Profile() {
     const [ followerCount, setFollowerCount ] = useState<number | null>(null);
     const [ followingCount, setFollowingCount ] = useState<number | null>(null);
     const [ requestCount, setRequestCount ] = useState( 0 );
-    const [ isOffline, setIsOffline ] = useState(false);
     const [ deletionModalVisible, setDeletionModalVisible ] = useState(false);
     const [ deletionPassword, setDeletionPassword ] = useState('');
     const [ deletingAccount, setDeletingAccount ] = useState(false);
@@ -50,10 +49,8 @@ export default function Profile() {
     const fetchUserData = useCallback(async () => {
         if (!userId) return;
         try {
-            const [profile, followers, following, requests] = await Promise.all([
+            const [profile, requests] = await Promise.all([
                 profileService.get(userId),
-                followService.listFollowers(userId),
-                followService.listFollowing(userId),
                 followService.listPendingRequests(userId),
             ]);
             if (profile) {
@@ -61,8 +58,8 @@ export default function Profile() {
                 if (profile.handle) setHandle(profile.handle);
                 setProfileImage(profile.profileImage);
             }
-            setFollowerCount(followers.length);
-            setFollowingCount(following.length);
+            setFollowerCount(profile?.followerCount ?? null);
+            setFollowingCount(profile?.followingCount ?? null);
             setRequestCount(requests.length);
         } catch (error: any) {
             setFollowerCount(null);
@@ -78,7 +75,6 @@ export default function Profile() {
         () => NetInfo.addEventListener((state) => {
             const offline =
                 state.isConnected === false || state.isInternetReachable === false;
-            setIsOffline(offline);
             if (!offline) void fetchUserData();
         }),
         [fetchUserData]
@@ -178,7 +174,7 @@ export default function Profile() {
                     <Text style={ styles.handle }>@{handle}</Text>
                 ) : null}
 
-                {!isOffline && followerCount !== null && followingCount !== null ? (
+                {followerCount !== null && followingCount !== null ? (
                 <View style={styles.connectionCounts}>
                     <Pressable
                         accessibilityRole="button"

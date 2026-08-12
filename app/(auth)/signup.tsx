@@ -15,7 +15,12 @@ import {
 import { AccountPrivacySelector } from '@/components/profile/AccountPrivacySelector';
 import { ReviewVisibilitySelector } from '@/components/reviews/ReviewVisibilitySelector';
 import { colors } from '@/constants/colors';
-import { authService, profileService, settingsService } from '@/services';
+import {
+  authService,
+  profileService,
+  settingsService,
+  socialGraphInitializationService,
+} from '@/services';
 import { userStore } from '@/store/userStore';
 import type { AccountPrivacy, ReviewVisibility } from '@/types/domain';
 import { formatHandle, isValidHandle, normalizeHandle } from '@/utils/handle';
@@ -96,6 +101,7 @@ export default function Signup() {
       }
 
       const profile = await profileService.create(userId, profileInput);
+      await socialGraphInitializationService.initializeCounters(userId);
       await settingsService.initializeForNewUser(
         userId,
         defaultVisibility
