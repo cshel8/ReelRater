@@ -41,8 +41,12 @@ export function createAccountRouter(
       response.status(204).send();
     } catch (error) {
       console.error('Account deletion failed:', error);
-      response.status(500).json({
-        error: { message: 'The account could not be deleted. No local data was cleared.' },
+      response.status(409).json({
+        error: {
+          code: 'account-deletion-incomplete',
+          message:
+            'Some account data may already have been removed. Please try again to finish deleting your account.',
+        },
       });
     }
   });

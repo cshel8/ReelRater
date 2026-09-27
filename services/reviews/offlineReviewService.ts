@@ -18,6 +18,7 @@ import {
   type ReviewSyncService,
 } from '@/services/reviews/reviewSyncService';
 import { DuplicateReviewError } from '@/services/reviews/reviewErrors';
+import { assertValidReview } from '@/services/reviews/reviewValidation';
 import type { Review } from '@/types/domain';
 import { readReviewMovieSnapshot } from '@/utils/reviewMovie';
 import { createReviewTargetKey } from '@/utils/reviewTargetIdentity';
@@ -127,28 +128,26 @@ export function createOfflineReviewService(
     let remoteAvailable = true;
     let remoteError: string | null = null;
 
-    if (!(await canSynchronize())) {
-      remoteAvailable = false;
-      remoteError = 'Device is offline';
-      remoteReviews = await cachedRepository.listForUser(userId);
-    } else {
+    try {
+      // NetInfo is useful for deciding whether to start write synchronization,
+      // but a read should let Firestore determine whether it is reachable.
+      // This prevents a stale or pessimistic reachability result from hiding
+      // otherwise available reviews.
+      remoteReviews = await remoteService.listForUser(userId);
       try {
-        remoteReviews = await remoteService.listForUser(userId);
-        try {
-          await cachedRepository.replaceForUser(userId, remoteReviews);
-        } catch (cacheError) {
-          const message =
-            cacheError instanceof Error
-              ? cacheError.message
-              : 'Unknown local cache error';
-          console.log('Unable to update the offline review cache:', message);
-        }
-      } catch (error) {
-        remoteAvailable = false;
-        remoteError = getErrorMessage(error);
-        console.log('Unable to load reviews from the remote service:', remoteError);
-        remoteReviews = await cachedRepository.listForUser(userId);
+        await cachedRepository.replaceForUser(userId, remoteReviews);
+      } catch (cacheError) {
+        const message =
+          cacheError instanceof Error
+            ? cacheError.message
+            : 'Unknown local cache error';
+        console.log('Unable to update the offline review cache:', message);
       }
+    } catch (error) {
+      remoteAvailable = false;
+      remoteError = getErrorMessage(error);
+      console.log('Unable to load reviews from the remote service:', remoteError);
+      remoteReviews = await cachedRepository.listForUser(userId);
     }
 
     const operations = await pendingRepository.listForUser(userId);
@@ -220,10 +219,12 @@ export function createOfflineReviewService(
       const review: Review = {
         id: randomUUID(),
         ...input,
+        spoilerWarning: input.spoilerWarning ?? false,
         movie: mediaSnapshot,
         createdAt: new Date().toISOString(),
         syncStatus: 'pending',
       };
+      assertValidReview(review);
 
       try {
         await identityRepository.save(userId, review);
@@ -268,6 +269,7 @@ export function createOfflineReviewService(
         movie: readReviewMovieSnapshot(review.movie, review.movieTitle),
         syncStatus: 'pending',
       };
+      assertValidReview(pendingReview);
 
       await pendingRepository.enqueueCreate(
         createOperation(userId, review.id, 'create', pendingReview)

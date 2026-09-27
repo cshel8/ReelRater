@@ -150,7 +150,9 @@ export type Review = {
    */
   movie?: ReviewMediaSnapshot;
   reviewText: string;
-  rating: string;
+  rating: number;
+  /** Whether the author marked this review as containing spoilers. */
+  spoilerWarning: boolean;
   visibility: ReviewVisibility;
   createdAt: string;
   syncStatus: 'synced' | 'pending' | 'failed';
@@ -158,8 +160,11 @@ export type Review = {
 
 export type CreateReviewInput = Omit<
   Review,
-  'id' | 'createdAt' | 'syncStatus'
->;
+  'id' | 'createdAt' | 'syncStatus' | 'spoilerWarning'
+> & {
+  /** Omitted inputs normalize to the approved default of false. */
+  spoilerWarning?: boolean;
+};
 
 export type ReviewVisibility = 'public' | 'followers' | 'private';
 
@@ -200,6 +205,7 @@ export type SharedReview = Review & {
 
 export type CommunityReview = SharedReview & {
   author: PublicUserProfile;
+  relationshipStatus?: FollowStatus | null;
 };
 
 export type FollowStatus = 'active' | 'pending';

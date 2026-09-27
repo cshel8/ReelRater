@@ -18,6 +18,7 @@ import {
   View,
 } from 'react-native';
 import { ReviewVisibilitySelector } from '@/components/reviews/ReviewVisibilitySelector';
+import { SpoilerWarningControl } from '@/components/reviews/SpoilerWarningControl';
 import { colors } from '@/constants/colors';
 import {
   mediaCatalogService,
@@ -25,6 +26,11 @@ import {
   settingsService,
 } from '@/services';
 import { DuplicateReviewError } from '@/services/reviews/reviewErrors';
+import {
+  MAX_REVIEW_TEXT_LENGTH,
+  MAX_REVIEW_TITLE_LENGTH,
+  reviewValidationMessage,
+} from '@/services/reviews/reviewValidation';
 import { userStore } from '@/store/userStore';
 import type {
   MediaSummary,
@@ -56,6 +62,7 @@ export default function ReviewScreen() {
     useState<ReviewVisibility>('private');
   const [visibility, setVisibility] =
     useState<ReviewVisibility>('private');
+  const [spoilerWarning, setSpoilerWarning] = useState(false);
   const [pendingCount, setPendingCount] = useState(0);
   const [isOffline, setIsOffline] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
@@ -71,7 +78,8 @@ export default function ReviewScreen() {
       selectedMedia !== null ||
       reviewText.trim().length > 0 ||
       rating !== 0 ||
-      visibility !== defaultVisibility);
+      visibility !== defaultVisibility ||
+      spoilerWarning);
 
   const fetchReviewStatus = useCallback(async () => {
     if (!userId) {
@@ -312,9 +320,15 @@ export default function ReviewScreen() {
   );
 
   const handleSubmit = async (onSaved?: () => void) => {
-    if (!movieTitle.trim() || !reviewText.trim() || rating === 0) {
+    const validationMessage = reviewValidationMessage({
+      movieTitle,
+      reviewText,
+      rating,
+      spoilerWarning,
+    });
+    if (validationMessage) {
       Alert.alert(
-        `Please choose a ${mediaType === 'tv' ? 'TV show' : 'movie'}, rating, and write your review`
+        validationMessage
       );
       return;
     }
@@ -351,7 +365,8 @@ export default function ReviewScreen() {
                 : { mediaType: 'movie', reviewTargetType: 'movie' }
             ),
         reviewText: reviewText.trim(),
-        rating: String(rating),
+        rating,
+        spoilerWarning,
         visibility,
       });
 
@@ -361,6 +376,7 @@ export default function ReviewScreen() {
       setMediaType('movie');
       setReviewText('');
       setRating(0);
+      setSpoilerWarning(false);
       setVisibility(defaultVisibility);
       await fetchReviewStatus();
 
@@ -531,6 +547,7 @@ export default function ReviewScreen() {
               mediaType === 'tv' ? 'TV show title' : 'Movie title'
             }
             autoCapitalize="words"
+            maxLength={MAX_REVIEW_TITLE_LENGTH}
             onChangeText={(value) => {
               setMovieTitle(value);
               setSelectedMedia(null);
@@ -712,6 +729,7 @@ export default function ReviewScreen() {
         <TextInput
           accessibilityLabel="Your review"
           multiline
+          maxLength={MAX_REVIEW_TEXT_LENGTH}
           onChangeText={setReviewText}
           placeholder={`What did you think of the ${
             mediaType === 'tv' ? 'show' : 'movie'
@@ -734,6 +752,13 @@ export default function ReviewScreen() {
           This choice applies only to this review and does not change your
           profile default.
         </Text>
+
+        <Text style={styles.label}>Spoiler warning</Text>
+        <SpoilerWarningControl
+          disabled={isSubmitting}
+          onChange={setSpoilerWarning}
+          value={spoilerWarning}
+        />
 
         <Pressable
           accessibilityRole="button"

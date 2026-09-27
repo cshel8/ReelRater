@@ -37,3 +37,6 @@ server/.env
 *.tsbuildinfo
 
 app-example
+
+firebase-debug.log*
+firestore-debug.log*

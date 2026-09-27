@@ -4,7 +4,6 @@ import { router } from 'expo-router';
 import { colors } from '@/constants/colors';
 import { userStore } from '@/store/userStore';
 import { authService, profileService } from '@/services';
-import { AwsHealthStatus } from '@/components/AwsHealthStatus';
 
 export default function App() {
   const {
@@ -97,9 +96,6 @@ export default function App() {
           <Text style = { styles.buttonText }>Go to Signup</Text>
       </Pressable>
 
-      <View style={styles.healthStatus}>
-        <AwsHealthStatus />
-      </View>
     </View>
   );
 }
@@ -143,9 +139,5 @@ const styles = StyleSheet.create({
   buttonText: {
     color: 'white',
     fontWeight: '600',
-  },
-  healthStatus: {
-    width: '100%',
-    marginTop: 24,
   },
 });

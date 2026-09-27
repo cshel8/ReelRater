@@ -56,10 +56,10 @@ function sortReviews(reviews: Review[], sort: ReviewSort): Review[] {
       return getReviewTime(left) - getReviewTime(right);
     }
     if (sort === 'highest') {
-      return Number(right.rating) - Number(left.rating);
+      return right.rating - left.rating;
     }
     if (sort === 'lowest') {
-      return Number(left.rating) - Number(right.rating);
+      return left.rating - right.rating;
     }
     return getReviewTime(right) - getReviewTime(left);
   });
@@ -262,17 +262,8 @@ export default function MyReviewsScreen() {
   const [sortModalVisible, setSortModalVisible] = useState(false);
   const [searchVisible, setSearchVisible] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [isOffline, setIsOffline] = useState(false);
-
-  useEffect(
-    () =>
-      NetInfo.addEventListener((state) => {
-        setIsOffline(
-          state.isConnected === false || state.isInternetReachable === false
-        );
-      }),
-    []
-  );
+  const reviewLoadInFlightRef = useRef(false);
+  const wasOfflineRef = useRef<boolean | null>(null);
 
   useEffect(() => {
     if (!userId) return;
@@ -332,6 +323,11 @@ export default function MyReviewsScreen() {
         setIsLoading(false);
         return;
       }
+      if (reviewLoadInFlightRef.current) {
+        return;
+      }
+
+      reviewLoadInFlightRef.current = true;
 
       if (refreshing) {
         setIsRefreshing(true);
@@ -351,11 +347,27 @@ export default function MyReviewsScreen() {
             : 'Your reviews could not be loaded'
         );
       } finally {
+        reviewLoadInFlightRef.current = false;
         setIsLoading(false);
         setIsRefreshing(false);
       }
     },
     [userId]
+  );
+
+  useEffect(
+    () =>
+      NetInfo.addEventListener((state) => {
+        const isOffline =
+          state.isConnected === false || state.isInternetReachable === false;
+        const wasOffline = wasOfflineRef.current;
+        wasOfflineRef.current = isOffline;
+
+        if (wasOffline === true && !isOffline) {
+          void loadReviews();
+        }
+      }),
+    [loadReviews]
   );
 
   useFocusEffect(
@@ -449,11 +461,11 @@ export default function MyReviewsScreen() {
         <Text style={styles.writeButtonText}>Write a Review</Text>
       </Pressable>
 
-      {(isOffline || !remoteAvailable) && (
+      {!remoteAvailable && (
         <View style={styles.connectionNotice}>
           <Ionicons color="#7B5A00" name="cloud-offline-outline" size={20} />
           <Text style={styles.connectionNoticeText}>
-            {!isOffline && remoteError?.includes('permission-denied')
+            {remoteError?.includes('permission-denied')
               ? 'Firestore denied access to your reviews. Check that your security rules are still active.'
               : 'Offline mode: showing your five most recent reviews and any changes saved on this device.'}
           </Text>

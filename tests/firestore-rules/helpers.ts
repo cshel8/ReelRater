@@ -57,15 +57,27 @@ export const relationship = (
 
 export const review = (
   userId: string,
-  visibility: 'public' | 'followers' | 'private'
+  visibility: 'public' | 'followers' | 'private',
+  overrides: Record<string, unknown> = {}
 ) => ({
   userId,
   movieTitle: 'Arrival',
-  movie: null,
+  movie: {
+    mediaType: 'movie',
+    reviewTargetType: 'movie',
+    matchStatus: 'manual',
+    catalogId: null,
+    title: 'Arrival',
+    releaseYear: null,
+    genres: [],
+    posterUrl: null,
+  },
   reviewText: 'Thoughtful science fiction.',
-  rating: '5',
+  rating: 5,
+  spoilerWarning: false,
   visibility,
   createdAt: new Date('2026-08-11T00:00:00.000Z'),
+  ...overrides,
 });
 
 export const clientDb = (testEnvironment: RulesTestEnvironment, userId?: string) =>

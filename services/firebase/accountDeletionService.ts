@@ -66,7 +66,17 @@ export const firebaseAccountDeletionService: AccountDeletionService = {
       throw new Error(await readError(response));
     }
 
-    await accountLocalDataService.removeForUser(user.uid);
+    let localCleanupComplete = true;
+    try {
+      await accountLocalDataService.removeForUser(user.uid);
+    } catch (error) {
+      localCleanupComplete = false;
+      console.log(
+        'Account was deleted remotely, but local account cleanup failed:',
+        error instanceof Error ? error.message : error
+      );
+    }
     await signOut(auth).catch(() => undefined);
+    return { localCleanupComplete };
   },
 };

@@ -252,6 +252,28 @@ Verify completion by checking its JSON output, then inspect representative
 administrator-only command; it is not exposed through the mobile API and does
 not replace the new-account-only `/api/v1/social/counters` initialization route.
 
+### Historical orphaned-relationship cleanup
+
+For historical accounts deleted outside ReelRater, the trusted server includes
+a separate relationship-maintenance command. It is dry-run by default and
+reports relationship paths plus endpoint-presence status without writing:
+
+```bash
+cd server
+npm run cleanup-orphaned-relationships
+```
+
+After reviewing that output, explicitly revalidate and delete only orphaned
+relationships with:
+
+```bash
+npm run cleanup-orphaned-relationships -- --delete-orphans
+```
+
+Run the social-counter reconciliation command afterward to rebuild surviving
+trusted counts from absolute active-relationship totals. This maintenance tool
+is not part of normal account deletion and is never exposed to the mobile API.
+
 ## Firestore Emulator security-rule tests
 
 Firestore Security Rules are tested locally with the Firestore Emulator rather

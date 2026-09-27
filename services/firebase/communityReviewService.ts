@@ -17,7 +17,10 @@ import type {
   ReviewVisibility,
   SharedReview,
 } from '@/types/domain';
-import { readReviewMovieSnapshot } from '@/utils/reviewMovie';
+import {
+  deserializeReviewMovie,
+  readFirestoreRating,
+} from '@/services/firebase/reviewSerialization';
 
 function readCreatedAt(value: unknown): string {
   if (
@@ -42,6 +45,8 @@ function isSharedVisibility(
   return visibility === 'public' || visibility === 'followers';
 }
 
+const readSpoilerWarning = (value: unknown): boolean => value === true;
+
 const readSharedReviews = (
   snapshots: Awaited<ReturnType<typeof getDocs>>[]
 ): SharedReview[] =>
@@ -60,12 +65,13 @@ function readSharedReview(
     return null;
   }
   const data = value as Record<string, unknown>;
+  const rating = readFirestoreRating(data.rating);
 
   if (
     typeof data.userId !== 'string' ||
     typeof data.movieTitle !== 'string' ||
     typeof data.reviewText !== 'string' ||
-    typeof data.rating !== 'string' ||
+    rating === null ||
     !isSharedVisibility(data.visibility)
   ) {
     return null;
@@ -75,9 +81,10 @@ function readSharedReview(
     id,
     authorId: data.userId,
     movieTitle: data.movieTitle,
-    movie: readReviewMovieSnapshot(data.movie, data.movieTitle),
+    movie: deserializeReviewMovie(data.movie, data.movieTitle),
     reviewText: data.reviewText,
-    rating: data.rating,
+    rating,
+    spoilerWarning: readSpoilerWarning(data.spoilerWarning),
     visibility: data.visibility,
     createdAt: readCreatedAt(data.createdAt),
     syncStatus: 'synced',

@@ -22,7 +22,8 @@ const createReview = (fetchedAt: string): Review => ({
     new Date(fetchedAt)
   ),
   reviewText: 'Excellent',
-  rating: '5',
+  rating: 5,
+  spoilerWarning: true,
   visibility: 'private',
   createdAt: '2026-01-01T12:00:00.000Z',
   syncStatus: 'synced',
@@ -65,6 +66,7 @@ describe('review catalog resolver', () => {
 
     expect(resolution.changed).toBe(true);
     expect(resolution.review.movieTitle).toBe('Arrival Updated');
+    expect(resolution.review.spoilerWarning).toBe(true);
     expect(resolution.review.movie).toEqual(
       expect.objectContaining({
         catalogDataRetention: expect.objectContaining({

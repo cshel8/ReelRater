@@ -8,8 +8,10 @@ export { firebaseSettingsService as settingsService } from '@/services/firebase/
 export { firebaseUserDirectoryService as userDirectoryService } from '@/services/firebase/userDirectoryService';
 
 import { createCommunityFeedService } from '@/services/community/communityFeedService';
+import { createEveryoneCommunityFeedService } from '@/services/community/everyoneCommunityFeedService';
 import { createPublicProfileReviewService } from '@/services/community/publicProfileReviewService';
 import { firebaseCommunityReviewService } from '@/services/firebase/communityReviewService';
+import { firebasePublicReviewRepository } from '@/services/firebase/publicReviewRepository';
 import { firebaseFollowService } from '@/services/firebase/followService';
 import { firebaseUserDirectoryService } from '@/services/firebase/userDirectoryService';
 import { firebaseReviewService } from '@/services/firebase/reviewService';
@@ -42,6 +44,11 @@ export const communityFeedService = createCommunityFeedService(
   firebaseFollowService,
   firebaseUserDirectoryService,
   firebaseCommunityReviewService
+);
+
+export const everyoneCommunityFeedService = createEveryoneCommunityFeedService(
+  firebasePublicReviewRepository,
+  firebaseUserDirectoryService
 );
 
 export const communityPreferenceRepository =

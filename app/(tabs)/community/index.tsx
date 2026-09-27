@@ -1,10 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
-import { router, Stack, useFocusEffect } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
-  Image,
   Modal,
   Pressable,
   RefreshControl,
@@ -13,11 +12,14 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { ReviewPoster } from '@/components/reviews/ReviewPoster';
-import { ReviewStars } from '@/components/reviews/ReviewStars';
+import { CommunityEmptyState, type CommunityEmptyStateKind } from '@/components/community/CommunityEmptyState';
+import { CommunityModeToggle, type CommunityMode } from '@/components/community/CommunityModeToggle';
+import { CommunityReviewCard } from '@/components/community/CommunityReviewCard';
 import { colors } from '@/constants/colors';
 import {
   communityFeedService,
+  everyoneCommunityFeedService,
+  followService,
   communityPreferenceRepository,
   settingsService,
 } from '@/services';
@@ -38,16 +40,8 @@ import type {
   CommunityReviewSort,
 } from '@/services/contracts';
 import { userStore } from '@/store/userStore';
-import type {
-  CommunityActivePreferences,
-  CommunityReview,
-  PublicUserProfile,
-} from '@/types/domain';
-import { formatReviewDate } from '@/utils/reviewFormatting';
-import {
-  getDisplayReviewMovieMetadata,
-  getDisplayReviewMovieTitle,
-} from '@/utils/reviewMovie';
+import type { CommunityActivePreferences, CommunityReview } from '@/types/domain';
+import type { PublicReviewPageCursor } from '@/services/contracts';
 
 const MEDIA_FILTER_OPTIONS: {
   label: string;
@@ -195,107 +189,15 @@ function CommunityOptionsModal({
   );
 }
 
-function AuthorAvatar({ author }: { author: PublicUserProfile }) {
-  if (author.profileImage) {
-    return <Image source={{ uri: author.profileImage }} style={styles.avatar} />;
-  }
-
-  return (
-    <View style={styles.avatarPlaceholder}>
-      <Text style={styles.avatarText}>
-        {author.displayName.trim().charAt(0).toUpperCase() || '?'}
-      </Text>
-    </View>
-  );
-}
-
-function CommunityReviewCard({ review }: { review: CommunityReview }) {
-  const formattedDate = formatReviewDate(review.createdAt);
-  const displayMovieTitle = getDisplayReviewMovieTitle(review);
-  const movieMetadata = getDisplayReviewMovieMetadata(review);
-
-  return (
-    <View style={styles.reviewCard}>
-      <Pressable
-        accessibilityLabel={`View ${review.author.displayName}'s profile`}
-        accessibilityHint="Opens this person's public profile"
-        accessibilityRole="button"
-        onPress={() =>
-          router.push({
-            pathname: '/community/[userId]',
-            params: { userId: review.author.id },
-          })
-        }
-        style={({ pressed }) => [
-          styles.authorRow,
-          pressed && styles.pressed,
-        ]}
-      >
-        <AuthorAvatar author={review.author} />
-        <View style={styles.authorIdentity}>
-          <Text numberOfLines={1} style={styles.authorName}>
-            {review.author.displayName}
-          </Text>
-          <Text numberOfLines={1} style={styles.authorHandle}>
-            @{review.author.handle}
-          </Text>
-        </View>
-        <Text style={styles.visibilityLabel}>
-          {review.visibility === 'followers' ? 'Followers' : 'Public'}
-        </Text>
-      </Pressable>
-
-      <Pressable
-        accessibilityHint="Opens the complete read-only review"
-        accessibilityLabel={`Read review of ${displayMovieTitle}`}
-        accessibilityRole="button"
-        onPress={() =>
-          router.push({
-            pathname: '/community/review/[reviewId]',
-            params: {
-              authorId: review.authorId,
-              reviewId: review.id,
-            },
-          })
-        }
-        style={({ pressed }) => [
-          styles.reviewRow,
-          pressed && styles.pressed,
-        ]}
-      >
-        <ReviewPoster
-          movie={review.movie}
-          style={styles.poster}
-          title={displayMovieTitle}
-        />
-        <View style={styles.reviewContent}>
-          <Text numberOfLines={2} style={styles.movieTitle}>
-            {displayMovieTitle}
-          </Text>
-          {movieMetadata ? (
-            <Text numberOfLines={1} style={styles.movieMetadata}>
-              {movieMetadata}
-            </Text>
-          ) : null}
-          <View style={styles.stars}>
-            <ReviewStars rating={review.rating} />
-          </View>
-          <Text numberOfLines={3} style={styles.reviewText}>
-            {review.reviewText}
-          </Text>
-          {formattedDate ? (
-            <Text style={styles.reviewDate}>{formattedDate}</Text>
-          ) : null}
-        </View>
-      </Pressable>
-    </View>
-  );
-}
-
 export default function CommunityScreen() {
   const listRef = useRef<FlatList<CommunityReview>>(null);
   const userId = userStore((state) => state.userId);
   const [reviews, setReviews] = useState<CommunityReview[]>([]);
+  const [everyoneReviews, setEveryoneReviews] = useState<CommunityReview[]>([]);
+  const [everyoneCursor, setEveryoneCursor] = useState<PublicReviewPageCursor | null>(null);
+  const [everyoneLoading, setEveryoneLoading] = useState(false);
+  const [everyoneLoadingMore, setEveryoneLoadingMore] = useState(false);
+  const [everyoneError, setEveryoneError] = useState<string | null>(null);
   const [followsAnyone, setFollowsAnyone] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -309,7 +211,7 @@ export default function CommunityScreen() {
   const [draftSort, setDraftSort] =
     useState<CommunityReviewSort>('newest');
   const [optionsVisible, setOptionsVisible] = useState(false);
-  const [searchVisible, setSearchVisible] = useState(false);
+  const [communityMode, setCommunityMode] = useState<CommunityMode>('following');
   const [searchQuery, setSearchQuery] = useState('');
   const [appliedSearchQuery, setAppliedSearchQuery] = useState('');
   const [preferencesReady, setPreferencesReady] = useState(false);
@@ -318,6 +220,7 @@ export default function CommunityScreen() {
   const hasLoadedFeedRef = useRef(false);
   const feedRequestIdRef = useRef(0);
   const shouldRestoreScrollRef = useRef(false);
+  const everyoneQueryKeyRef = useRef<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -450,6 +353,30 @@ export default function CommunityScreen() {
     ]
   );
 
+  const loadEveryone = useCallback(async (append = false) => {
+    if (!userId || !preferencesReady || (append && !everyoneCursor)) return;
+    append ? setEveryoneLoadingMore(true) : setEveryoneLoading(true);
+    if (!append) setEveryoneError(null);
+    try {
+      const page = await everyoneCommunityFeedService.listPage(userId, {
+        mediaFilter: selectedMediaFilter, sort: selectedSort,
+        ...(append ? { cursor: everyoneCursor } : {}),
+      });
+      setEveryoneReviews((current) => append ? [...current, ...page.reviews.filter((review) => !current.some((existing) => existing.id === review.id))] : page.reviews);
+      setEveryoneCursor(page.nextCursor);
+    } catch (loadError) {
+      setEveryoneError(loadError instanceof Error ? loadError.message : 'Public reviews could not be loaded.');
+    } finally { setEveryoneLoading(false); setEveryoneLoadingMore(false); }
+  }, [everyoneCursor, preferencesReady, selectedMediaFilter, selectedSort, userId]);
+
+  useEffect(() => {
+    const key = `${communityMode}:${selectedMediaFilter}:${selectedSort}:${userId ?? ''}`;
+    if (communityMode === 'everyone' && preferencesReady && everyoneQueryKeyRef.current !== key) {
+      everyoneQueryKeyRef.current = key;
+      void loadEveryone();
+    }
+  }, [communityMode, loadEveryone, preferencesReady, selectedMediaFilter, selectedSort, userId]);
+
   useFocusEffect(
     useCallback(() => {
       if (!preferencesReady) {
@@ -473,12 +400,14 @@ export default function CommunityScreen() {
       }
 
       shouldRestoreScrollRef.current = true;
-      void loadFeed();
+      if (communityMode === 'following') {
+        void loadFeed();
+      }
 
       return () => {
         setOptionsVisible(false);
       };
-    }, [loadFeed, preferencesReady, userId])
+    }, [communityMode, loadFeed, preferencesReady, userId])
   );
 
   useFocusEffect(
@@ -486,7 +415,6 @@ export default function CommunityScreen() {
       () => () => {
         setOptionsVisible(false);
         setSearchQuery('');
-        setSearchVisible(false);
       },
       []
     )
@@ -569,32 +497,18 @@ export default function CommunityScreen() {
     }
   };
 
-  const searchHeaderButton = () => (
-    <Pressable
-      accessibilityLabel="Search community reviews"
-      accessibilityRole="button"
-      hitSlop={10}
-      onPress={() => setSearchVisible(true)}
-      style={({ pressed }) => [
-        styles.headerButton,
-        pressed && styles.pressed,
-      ]}
-    >
-      <Ionicons color="#33363D" name="search-outline" size={23} />
-    </Pressable>
-  );
-
   const filterHeaderButton = () => {
     const hasActiveOptions =
       selectedMediaFilter !== 'all' || selectedSort !== 'newest';
     return (
       <Pressable
         accessibilityLabel="Filter and sort community reviews"
+        accessibilityState={{ disabled: false }}
         accessibilityRole="button"
         hitSlop={10}
         onPress={openOptions}
         style={({ pressed }) => [
-          styles.headerButton,
+          styles.filterButton,
           pressed && styles.pressed,
         ]}
       >
@@ -607,86 +521,76 @@ export default function CommunityScreen() {
     );
   };
 
-  if (isLoading) {
+  const changeCommunityMode = (nextMode: CommunityMode) => {
+    setCommunityMode(nextMode);
+    setSearchQuery('');
+    setAppliedSearchQuery('');
+    setOptionsVisible(false);
+    if (nextMode === 'everyone') everyoneQueryKeyRef.current = null;
+  };
+
+  const getFollowingEmptyState = (): CommunityEmptyStateKind => {
+    if (error) return 'error';
+    if (searchQuery.trim()) return 'search';
+    if (selectedMediaFilter !== 'all') return 'filtered';
+    return followsAnyone ? 'following-quiet' : 'following-empty';
+  };
+
+  const communityHeader = (
+    <View style={styles.communityHeader}>
+      <CommunityModeToggle mode={communityMode} onChange={changeCommunityMode} />
+      <View style={styles.searchRow}>
+        <View style={styles.searchField}>
+          <Ionicons color="#7B8190" name="search-outline" size={21} />
+          <TextInput
+            accessibilityLabel="Search community reviews"
+            autoCapitalize="none"
+            autoCorrect={false}
+            editable={communityMode === 'following'}
+            onChangeText={updateSearchQuery}
+            placeholder="Search titles or reviews..."
+            placeholderTextColor="#9DA3AE"
+            returnKeyType="search"
+            style={styles.searchInput}
+            value={searchQuery}
+          />
+          {searchQuery.length > 0 ? (
+            <Pressable accessibilityLabel="Clear community review search" hitSlop={8} onPress={() => updateSearchQuery('')}>
+              <Ionicons color="#7B8190" name="close-circle" size={21} />
+            </Pressable>
+          ) : null}
+        </View>
+        {filterHeaderButton()}
+      </View>
+      {communityMode === 'everyone' ? <Text style={styles.searchComingSoon}>Global Community search coming soon</Text> : null}
+    </View>
+  );
+
+  if ((isLoading && communityMode === 'following') || (everyoneLoading && communityMode === 'everyone')) {
     return (
-      <>
-        <Stack.Screen
-          options={{
-            headerLeft: searchHeaderButton,
-            headerRight: filterHeaderButton,
-          }}
-        />
-        <View style={styles.loadingContainer}>
+      <View style={styles.loadingContainer}>
+        {communityHeader}
+        <View style={styles.loadingBody}>
           <ActivityIndicator color={colors.reviewAccent} size="large" />
           <Text style={styles.loadingText}>Loading your community…</Text>
         </View>
-      </>
+      </View>
     );
   }
 
   return (
     <>
-      <Stack.Screen
-        options={{
-          headerLeft: searchHeaderButton,
-          headerRight: filterHeaderButton,
-        }}
-      />
       <FlatList
       ref={listRef}
       style={styles.list}
       contentContainerStyle={[
         styles.listContent,
-        reviews.length === 0 && styles.emptyListContent,
+        (communityMode === 'everyone' || reviews.length === 0) && styles.emptyListContent,
       ]}
-      data={reviews}
+      data={communityMode === 'following' ? reviews : everyoneReviews}
       ItemSeparatorComponent={() => <View style={styles.separator} />}
       keyExtractor={(review) => review.id}
-      ListHeaderComponent={
-        searchVisible ? (
-          <View style={styles.searchRow}>
-            <View style={styles.searchField}>
-              <Ionicons color="#7B8190" name="search-outline" size={21} />
-              <TextInput
-                accessibilityLabel="Search community reviews"
-                autoCapitalize="none"
-                autoCorrect={false}
-                autoFocus
-                onChangeText={updateSearchQuery}
-                placeholder="Search titles or review text"
-                placeholderTextColor="#9DA3AE"
-                returnKeyType="search"
-                style={styles.searchInput}
-                value={searchQuery}
-              />
-              {searchQuery.length > 0 ? (
-                <Pressable
-                  accessibilityLabel="Clear community review search"
-                  hitSlop={8}
-                  onPress={() => updateSearchQuery('')}
-                >
-                  <Ionicons color="#7B8190" name="close-circle" size={21} />
-                </Pressable>
-              ) : null}
-            </View>
-            <Pressable
-              accessibilityLabel="Close community review search"
-              accessibilityRole="button"
-              hitSlop={8}
-              onPress={() => {
-                updateSearchQuery('');
-                setSearchVisible(false);
-              }}
-              style={({ pressed }) => [
-                styles.searchCancelButton,
-                pressed && styles.pressed,
-              ]}
-            >
-              <Ionicons color="#4F5662" name="close" size={24} />
-            </Pressable>
-          </View>
-        ) : null
-      }
+      ListHeaderComponent={communityHeader}
       onContentSizeChange={restoreScrollPosition}
       onScroll={(event) => {
         if (userId) {
@@ -695,78 +599,26 @@ export default function CommunityScreen() {
       }}
       scrollEventThrottle={16}
       ListEmptyComponent={
-        <View style={styles.emptyState}>
-          <Ionicons
-            color="#C4C7CE"
-            name={error ? 'cloud-offline-outline' : 'people-outline'}
-            size={49}
-          />
-          <Text style={styles.emptyTitle}>
-            {error
-              ? 'Community unavailable'
-              : searchQuery.trim()
-                ? 'No matching community reviews'
-              : followsAnyone && selectedMediaFilter !== 'all'
-                ? `No ${selectedMediaFilter === 'tv' ? 'TV show' : 'movie'} reviews yet`
-              : followsAnyone
-                ? 'No community reviews yet'
-                : 'Find your community'}
-          </Text>
-          <Text style={styles.emptyText}>
-            {error?.includes('permission-denied')
-              ? 'Firestore denied this feed query. Publish the updated review rules, then try again.'
-              : error?.includes('failed-precondition')
-                ? 'Firestore needs an index for this feed query. Check the development console for its index link.'
-              : error
-                  ? 'This feed is online-only for now. Check your connection and try again.'
-              : searchQuery.trim()
-                ? 'Try another title or phrase from a review.'
-              : followsAnyone && selectedMediaFilter !== 'all'
-                ? `No ${selectedMediaFilter === 'tv' ? 'TV show' : 'movie'} reviews from people you follow are available yet.`
-              : followsAnyone
-                ? 'Reviews shared by people you follow will appear here.'
-                : 'Follow other movie fans to see the reviews they share.'}
-          </Text>
-          {!error && !followsAnyone ? (
-            <Pressable
-              accessibilityRole="button"
-              onPress={() => router.push('/community/find-people')}
-              style={({ pressed }) => [
-                styles.findPeopleButton,
-                pressed && styles.pressed,
-              ]}
-            >
-              <Ionicons
-                color="#FFFFFF"
-                name="search-outline"
-                size={19}
-              />
-              <Text style={styles.findPeopleButtonText}>Find People</Text>
-            </Pressable>
-          ) : null}
-          {error ? (
-            <Pressable
-              accessibilityRole="button"
-              onPress={() => void loadFeed()}
-              style={({ pressed }) => [
-                styles.retryButton,
-                pressed && styles.pressed,
-              ]}
-            >
-              <Text style={styles.retryButtonText}>Try Again</Text>
-            </Pressable>
-          ) : null}
-        </View>
+        <CommunityEmptyState
+          kind={communityMode === 'everyone' ? (everyoneError ? 'error' : selectedMediaFilter !== 'all' ? 'filtered' : 'everyone-empty') : getFollowingEmptyState()}
+          onExploreEveryone={() => changeCommunityMode('everyone')}
+          onFindPeople={() => router.push('/community/find-people')}
+          onRetry={() => void (communityMode === 'everyone' ? loadEveryone() : loadFeed())}
+        />
       }
       refreshControl={
         <RefreshControl
           colors={[colors.reviewAccent]}
-          onRefresh={() => void loadFeed(true)}
+          onRefresh={() => {
+            if (communityMode === 'following') void loadFeed(true);
+            else void loadEveryone();
+          }}
           refreshing={isRefreshing}
           tintColor={colors.reviewAccent}
         />
       }
-      renderItem={({ item }) => <CommunityReviewCard review={item} />}
+      renderItem={({ item }) => <CommunityReviewCard review={item} onFollow={communityMode === 'everyone' && item.authorId !== userId ? async (review) => { await followService.follow(userId ?? '', review.authorId); setEveryoneReviews((current) => current.map((candidate) => candidate.authorId === review.authorId ? { ...candidate, relationshipStatus: review.author.accountPrivacy === 'private' ? 'pending' : 'active' } : candidate)); } : undefined} />}
+      ListFooterComponent={communityMode === 'everyone' && everyoneReviews.length > 0 && everyoneCursor ? <Pressable accessibilityRole="button" accessibilityLabel="Load more public reviews" disabled={everyoneLoadingMore} onPress={() => void loadEveryone(true)} style={styles.loadMoreButton}><Text style={styles.loadMoreText}>{everyoneLoadingMore ? 'Loading…' : 'Load more'}</Text></Pressable> : null}
       showsVerticalScrollIndicator={false}
       />
       <CommunityOptionsModal
@@ -791,20 +643,24 @@ const styles = StyleSheet.create({
   loadingContainer: {
     flex: 1,
     backgroundColor: '#F7F7F8',
-    alignItems: 'center',
-    justifyContent: 'center',
   },
+  loadingBody: { alignItems: 'center', flex: 1, justifyContent: 'center' },
   loadingText: {
     color: '#858B96',
     marginTop: 12,
   },
-  headerButton: {
+  filterButton: {
     width: 42,
     height: 42,
     borderRadius: 21,
+    backgroundColor: '#FFFFFF',
+    borderColor: '#E6E8EC',
+    borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },
+  disabledControl: { opacity: 0.45 },
+  communityHeader: { paddingBottom: 16 },
   searchRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -829,13 +685,9 @@ const styles = StyleSheet.create({
     fontSize: 15,
     paddingVertical: 0,
   },
-  searchCancelButton: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+  searchComingSoon: { color: '#7D8490', fontSize: 12, marginTop: -9, marginBottom: 7 },
+  loadMoreButton: { alignItems: 'center', paddingVertical: 16 },
+  loadMoreText: { color: colors.reviewAccentText, fontWeight: '700' },
   list: {
     flex: 1,
     backgroundColor: '#F7F7F8',
@@ -847,151 +699,6 @@ const styles = StyleSheet.create({
   },
   emptyListContent: {
     flexGrow: 1,
-  },
-  emptyState: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 30,
-  },
-  emptyTitle: {
-    color: '#3E4148',
-    fontSize: 20,
-    fontWeight: '700',
-    marginTop: 15,
-    textAlign: 'center',
-  },
-  emptyText: {
-    color: '#858B96',
-    fontSize: 15,
-    lineHeight: 22,
-    marginTop: 8,
-    textAlign: 'center',
-  },
-  findPeopleButton: {
-    minHeight: 46,
-    borderRadius: 9,
-    backgroundColor: colors.reviewAccent,
-    marginTop: 22,
-    paddingHorizontal: 21,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 7,
-  },
-  findPeopleButtonText: {
-    color: '#FFFFFF',
-    fontWeight: '700',
-  },
-  retryButton: {
-    minHeight: 42,
-    borderWidth: 1,
-    borderColor: colors.reviewAccent,
-    borderRadius: 8,
-    marginTop: 20,
-    paddingHorizontal: 19,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  retryButtonText: {
-    color: colors.reviewAccentText,
-    fontWeight: '700',
-  },
-  reviewCard: {
-    width: '100%',
-    maxWidth: 600,
-    alignSelf: 'center',
-    borderWidth: 1,
-    borderColor: '#E6E6E9',
-    borderRadius: 16,
-    backgroundColor: '#FFFFFF',
-    padding: 15,
-  },
-  authorRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  avatar: {
-    width: 39,
-    height: 39,
-    borderRadius: 20,
-  },
-  avatarPlaceholder: {
-    width: 39,
-    height: 39,
-    borderRadius: 20,
-    backgroundColor: colors.reviewAccentSoft,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarText: {
-    color: colors.reviewAccentText,
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  authorIdentity: {
-    flex: 1,
-    minWidth: 0,
-    marginLeft: 10,
-  },
-  authorName: {
-    color: '#24252A',
-    fontSize: 15,
-    fontWeight: '700',
-  },
-  authorHandle: {
-    color: '#858B96',
-    fontSize: 12,
-    marginTop: 2,
-  },
-  visibilityLabel: {
-    color: colors.reviewAccentText,
-    fontSize: 11,
-    fontWeight: '600',
-    backgroundColor: colors.reviewAccentSoft,
-    borderRadius: 10,
-    overflow: 'hidden',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-  },
-  reviewRow: {
-    flexDirection: 'row',
-    marginTop: 14,
-  },
-  poster: {
-    width: 82,
-    height: 116,
-    borderRadius: 8,
-  },
-  reviewContent: {
-    flex: 1,
-    minWidth: 0,
-    marginLeft: 14,
-  },
-  movieTitle: {
-    color: '#202126',
-    fontSize: 17,
-    fontWeight: '700',
-    lineHeight: 21,
-  },
-  movieMetadata: {
-    color: '#9095A0',
-    fontSize: 12,
-    marginTop: 3,
-  },
-  stars: {
-    marginTop: 7,
-  },
-  reviewText: {
-    color: '#4F535C',
-    fontSize: 14,
-    lineHeight: 19,
-    marginTop: 8,
-  },
-  reviewDate: {
-    color: '#9095A0',
-    fontSize: 12,
-    marginTop: 8,
   },
   separator: {
     height: 13,

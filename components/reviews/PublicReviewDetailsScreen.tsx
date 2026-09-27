@@ -22,6 +22,7 @@ import {
   getDisplayReviewMovieTitle,
 } from '@/utils/reviewMovie';
 import { ReviewPoster } from './ReviewPoster';
+import { SpoilerReviewText } from './SpoilerReviewText';
 import { ReviewStars } from './ReviewStars';
 
 export default function PublicReviewDetailsScreen() {
@@ -157,7 +158,11 @@ export default function PublicReviewDetailsScreen() {
       <View style={styles.reviewSection}>
         <Text style={styles.sectionTitle}>Review</Text>
         <View style={styles.reviewBodyCard}>
-          <Text style={styles.reviewText}>{review.reviewText}</Text>
+          <SpoilerReviewText
+            reviewText={review.reviewText}
+            spoilerWarning={review.spoilerWarning}
+            textStyle={styles.reviewText}
+          />
         </View>
       </View>
     </ScrollView>

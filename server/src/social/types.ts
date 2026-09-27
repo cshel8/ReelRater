@@ -26,6 +26,7 @@ export interface SocialGraphService {
     followedUserId: string,
     followerId: string
   ): Promise<SocialMutationResult>;
+  relationshipStatuses(viewerId: string, userIds: string[]): Promise<Record<string, SocialRelationshipStatus | null>>;
 }
 
 export class SocialGraphError extends Error {

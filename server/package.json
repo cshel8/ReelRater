@@ -11,6 +11,8 @@
     "build": "tsc",
     "start": "node --env-file-if-exists=.env dist/server.js",
     "reconcile-social-counters": "node --env-file-if-exists=.env ./node_modules/tsx/dist/cli.mjs src/social/reconcileSocialCountersCommand.ts",
+    "cleanup-orphaned-relationships": "node --env-file-if-exists=.env ./node_modules/tsx/dist/cli.mjs src/social/cleanupOrphanedRelationshipsCommand.ts",
+    "inventory-public-review-schema": "node --env-file-if-exists=.env ./node_modules/tsx/dist/cli.mjs src/reviews/inventoryPublicReviewSchemaCommand.ts",
     "test": "tsx --test src/*.test.ts src/**/*.test.ts"
   },
   "dependencies": {

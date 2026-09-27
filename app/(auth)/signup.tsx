@@ -175,7 +175,7 @@ export default function Signup() {
                 placeholder="Type here"
                 secureTextEntry
                 style={styles.input}
-                textContentType="newPassword"
+                textContentType="none"
                 value={password}
               />
 
@@ -188,7 +188,7 @@ export default function Signup() {
                 placeholder="Retype your password"
                 secureTextEntry
                 style={styles.input}
-                textContentType="newPassword"
+                textContentType="none"
                 value={confirmPassword}
               />
 

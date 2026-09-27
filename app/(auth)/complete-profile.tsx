@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { AccountPrivacySelector } from '@/components/profile/AccountPrivacySelector';
 import { ReviewVisibilitySelector } from '@/components/reviews/ReviewVisibilitySelector';
+import { AccountDeletionAction } from '@/components/account/AccountDeletionAction';
 import {
   authService,
   profileService,
@@ -89,6 +90,14 @@ export default function CompleteProfile() {
     }
   };
 
+  const handleAccountDeleted = () => {
+    setUserId(null);
+    setDisplayName('');
+    setHandle('');
+    setProfileImage(null);
+    router.replace('/login');
+  };
+
   return (
     <ScrollView
       contentContainerStyle={styles.container}
@@ -165,13 +174,15 @@ export default function CompleteProfile() {
       <Pressable disabled={saving} onPress={signOut} style={styles.secondaryButton}>
         <Text style={styles.secondaryButtonText}>Sign Out</Text>
       </Pressable>
+
+      <AccountDeletionAction onDeleted={handleAccountDeleted} />
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
+    flexGrow: 1,
     backgroundColor: '#fff',
     alignItems: 'center',
     paddingTop: 50,

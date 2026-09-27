@@ -12,6 +12,7 @@ import {
   View,
 } from 'react-native';
 import { ReviewPoster } from '@/components/reviews/ReviewPoster';
+import { SpoilerReviewText } from '@/components/reviews/SpoilerReviewText';
 import { ReviewStars } from '@/components/reviews/ReviewStars';
 import { colors } from '@/constants/colors';
 import {
@@ -68,9 +69,12 @@ function ProfileReviewCard({
         <View style={styles.reviewStars}>
           <ReviewStars rating={review.rating} />
         </View>
-        <Text numberOfLines={3} style={styles.reviewText}>
-          {review.reviewText}
-        </Text>
+        <SpoilerReviewText
+          numberOfLines={3}
+          reviewText={review.reviewText}
+          spoilerWarning={review.spoilerWarning}
+          textStyle={styles.reviewText}
+        />
         {date ? <Text style={styles.reviewDate}>{date}</Text> : null}
       </View>
     </Pressable>
