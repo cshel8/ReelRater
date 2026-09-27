@@ -1,7 +1,7 @@
 import * as SQLite from 'expo-sqlite';
 
 const DATABASE_NAME = 'reel-rater.db';
-const DATABASE_VERSION = 9;
+const DATABASE_VERSION = 11;
 
 let databasePromise: Promise<SQLite.SQLiteDatabase> | null = null;
 
@@ -197,6 +197,50 @@ async function migrate(database: SQLite.SQLiteDatabase): Promise<void> {
           ON review_target_identities(user_id, review_id);
 
         PRAGMA user_version = 9;
+      `);
+    }
+
+    if (currentVersion < 10) {
+      await transaction.execAsync(`
+        ALTER TABLE cached_reviews
+          ADD COLUMN spoiler_warning INTEGER NOT NULL DEFAULT 0;
+
+        PRAGMA user_version = 10;
+      `);
+    }
+
+    if (currentVersion < 11) {
+      await transaction.execAsync(`
+        ALTER TABLE cached_reviews RENAME TO cached_reviews_v10;
+
+        CREATE TABLE cached_reviews (
+          review_id TEXT NOT NULL,
+          user_id TEXT NOT NULL,
+          movie_title TEXT NOT NULL,
+          movie_json TEXT,
+          review_text TEXT NOT NULL,
+          rating INTEGER NOT NULL,
+          spoiler_warning INTEGER NOT NULL DEFAULT 0,
+          visibility TEXT NOT NULL DEFAULT 'private',
+          created_at TEXT NOT NULL,
+          PRIMARY KEY (user_id, review_id)
+        );
+
+        INSERT INTO cached_reviews (
+          review_id, user_id, movie_title, movie_json, review_text, rating,
+          spoiler_warning, visibility, created_at
+        )
+        SELECT
+          review_id, user_id, movie_title, movie_json, review_text,
+          CAST(rating AS INTEGER), spoiler_warning, visibility, created_at
+        FROM cached_reviews_v10;
+
+        DROP TABLE cached_reviews_v10;
+
+        CREATE INDEX IF NOT EXISTS cached_reviews_user_date_index
+          ON cached_reviews(user_id, created_at DESC);
+
+        PRAGMA user_version = 11;
       `);
     }
   });

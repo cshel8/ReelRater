@@ -98,7 +98,7 @@ describe('My Reviews screen', () => {
           id: 'review-1',
           movieTitle: 'Arrival',
           reviewText: 'Thoughtful, emotional science fiction.',
-          rating: '5',
+          rating: 5,
           createdAt: '2026-07-18T12:00:00.000Z',
           syncStatus: 'synced',
         },
@@ -132,7 +132,7 @@ describe('My Reviews screen', () => {
           id: 'review-1',
           movieTitle: 'Arrival',
           reviewText: 'Excellent.',
-          rating: '4',
+          rating: 4,
           createdAt: '2026-07-18T12:00:00.000Z',
           syncStatus: 'synced',
         },
@@ -140,7 +140,7 @@ describe('My Reviews screen', () => {
           id: 'review-2',
           movieTitle: 'Parasite',
           reviewText: 'Brilliant.',
-          rating: '5',
+          rating: 5,
           createdAt: '2026-07-17T12:00:00.000Z',
           syncStatus: 'synced',
         },
@@ -168,7 +168,7 @@ describe('My Reviews screen', () => {
           id: 'review-1',
           movieTitle: 'Arrival',
           reviewText: 'Excellent science fiction.',
-          rating: '5',
+          rating: 5,
           createdAt: '2026-07-18T12:00:00.000Z',
           syncStatus: 'synced',
         },
@@ -186,7 +186,7 @@ describe('My Reviews screen', () => {
             posterUrl: null,
           },
           reviewText: 'A streamlined version of a classic series.',
-          rating: '4',
+          rating: 4,
           createdAt: '2026-07-17T12:00:00.000Z',
           syncStatus: 'synced',
         },
@@ -230,7 +230,7 @@ describe('My Reviews screen', () => {
           id: 'review-1',
           movieTitle: 'Arrival',
           reviewText: 'Thoughtful science fiction.',
-          rating: '4',
+          rating: 4,
           createdAt: '2026-07-18T12:00:00.000Z',
           syncStatus: 'synced',
         },
@@ -238,7 +238,7 @@ describe('My Reviews screen', () => {
           id: 'review-2',
           movieTitle: 'Parasite',
           reviewText: 'Brilliant social commentary.',
-          rating: '5',
+          rating: 5,
           createdAt: '2026-07-17T12:00:00.000Z',
           syncStatus: 'synced',
         },
@@ -297,7 +297,7 @@ describe('My Reviews screen', () => {
     alertSpy.mockRestore();
   });
 
-  it('shows the offline limit banner as soon as the device is offline', async () => {
+  it('does not show the offline banner solely because NetInfo is pessimistic', async () => {
     const screen = render(<MyReviewsScreen />);
     await screen.findByText('Write a Review');
     const networkListener = (NetInfo.addEventListener as jest.Mock).mock
@@ -307,6 +307,48 @@ describe('My Reviews screen', () => {
       networkListener({ isConnected: false, isInternetReachable: false });
     });
 
-    expect(screen.getByText(/Offline mode: showing your five most recent/)).toBeTruthy();
+    expect(screen.queryByText(/Offline mode: showing your five most recent/)).toBeNull();
+  });
+
+  it('reloads once when connectivity transitions from offline to online', async () => {
+    (reviewService.listForUser as jest.Mock)
+      .mockResolvedValueOnce({
+        reviews: [],
+        pendingCount: 0,
+        remoteAvailable: false,
+        remoteError: 'Network unavailable',
+      })
+      .mockResolvedValueOnce({
+        reviews: [
+          {
+            id: 'review-1',
+            movieTitle: 'Arrival',
+            reviewText: 'Recovered from the remote service.',
+            rating: 4,
+            createdAt: '2026-07-18T12:00:00.000Z',
+            syncStatus: 'synced',
+          },
+        ],
+        pendingCount: 0,
+        remoteAvailable: true,
+        remoteError: null,
+      });
+    const screen = render(<MyReviewsScreen />);
+    await screen.findByText(/Offline mode: showing your five most recent/);
+    const networkListener = (NetInfo.addEventListener as jest.Mock).mock
+      .calls.at(-1)?.[0];
+
+    act(() => {
+      networkListener({ isConnected: false, isInternetReachable: false });
+    });
+    await act(async () => {
+      networkListener({ isConnected: true, isInternetReachable: true });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('Arrival')).toBeTruthy();
+    });
+    expect(reviewService.listForUser).toHaveBeenCalledTimes(2);
+    expect(screen.queryByText(/Offline mode: showing your five most recent/)).toBeNull();
   });
 });

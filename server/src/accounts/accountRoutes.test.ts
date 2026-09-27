@@ -64,3 +64,33 @@ test('account deletion derives the user id from the verified token', async () =>
   assert.equal(response.status, 204);
   assert.deepEqual(deletedUserIds, ['user-1']);
 });
+
+test('reports a failed remote cleanup as safely retryable', async () => {
+  const failingServer = createApp({
+    accountIdentityVerifier: {
+      async verify() {
+        return { userId: 'user-2', authenticatedAt: new Date() };
+      },
+    },
+    accountDataDeleter: {
+      async deleteAll() {
+        throw new Error('Storage unavailable');
+      },
+    },
+  }).listen(0, '127.0.0.1');
+  await new Promise<void>((resolve) => failingServer.once('listening', resolve));
+  const address = failingServer.address();
+  if (!address || typeof address === 'string') throw new Error('No test port');
+
+  const response = await fetch(`http://127.0.0.1:${address.port}/api/v1/account`, {
+    method: 'DELETE',
+    headers: { Authorization: 'Bearer recent' },
+  });
+  const body = await response.json() as { error: { code: string; message: string } };
+  assert.equal(response.status, 409);
+  assert.equal(body.error.code, 'account-deletion-incomplete');
+  assert.match(body.error.message, /may already have been removed/i);
+  await new Promise<void>((resolve, reject) =>
+    failingServer.close((error) => (error ? reject(error) : resolve()))
+  );
+});

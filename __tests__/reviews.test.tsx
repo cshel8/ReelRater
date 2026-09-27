@@ -87,7 +87,7 @@ describe('Write Review screen', () => {
       id: 'review-1',
       movieTitle: 'Arrival',
       reviewText: 'Excellent science fiction.',
-      rating: '4',
+      rating: 4,
       visibility: 'private',
       createdAt: '2026-07-18T12:00:00.000Z',
       syncStatus: 'synced',
@@ -128,11 +128,11 @@ describe('Write Review screen', () => {
     });
   });
 
-  it('posts the selected star rating without imposing a review length cap', async () => {
+  it('posts the selected numeric star rating with the review length cap', async () => {
     const screen = render(<ReviewScreen />);
     const reviewInput = screen.getByLabelText('Your review');
 
-    expect(reviewInput.props.maxLength).toBeUndefined();
+    expect(reviewInput.props.maxLength).toBe(3000);
 
     fireEvent.changeText(screen.getByLabelText('Movie title'), 'Arrival');
     fireEvent.press(screen.getByLabelText('4 out of 5 stars'));
@@ -153,9 +153,27 @@ describe('Write Review screen', () => {
           posterUrl: null,
         },
         reviewText: 'Excellent science fiction.',
-        rating: '4',
+        rating: 4,
+        spoilerWarning: false,
         visibility: 'private',
       });
+    });
+  });
+
+  it('allows a user to mark a new review as containing spoilers', async () => {
+    const screen = render(<ReviewScreen />);
+
+    fireEvent.changeText(screen.getByLabelText('Movie title'), 'Arrival');
+    fireEvent.press(screen.getByLabelText('4 out of 5 stars'));
+    fireEvent.changeText(screen.getByLabelText('Your review'), 'Spoiler text.');
+    fireEvent.press(screen.getByLabelText('Contains spoilers'));
+    fireEvent.press(screen.getByText('Post Review'));
+
+    await waitFor(() => {
+      expect(reviewService.create).toHaveBeenCalledWith(
+        'user-1',
+        expect.objectContaining({ spoilerWarning: true })
+      );
     });
   });
 
@@ -312,7 +330,7 @@ describe('Write Review screen', () => {
       id: 'existing-tv-review',
       movieTitle: tvSeries.title,
       reviewText: 'Already reviewed.',
-      rating: '4',
+      rating: 4,
       visibility: 'private',
       createdAt: '2026-07-18T12:00:00.000Z',
       syncStatus: 'synced',

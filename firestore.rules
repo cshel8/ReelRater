@@ -106,12 +106,176 @@ service cloud.firestore {
     }
 
     match /reviews/{reviewId} {
+      function validReviewTitle(value) {
+        // Rules can reliably require a non-empty string, while the client
+        // performs friendlier trimmed/non-whitespace validation.
+        return value is string && value.size() > 0 && value.size() <= 200;
+      }
+
+      function validRating(value) {
+        return value is number
+          && value is int
+          && value >= 1
+          && value <= 5;
+      }
+
+      function validReviewText(value) {
+        // Firestore Rules has no safe general-purpose string trim operation.
+        // Service/client validation rejects whitespace-only text before write.
+        return value is string && value.size() > 0 && value.size() <= 3000;
+      }
+
+      function validVisibility(value) {
+        return value in ['public', 'followers', 'private'];
+      }
+
+      function validMediaTarget(movie) {
+        return (movie.mediaType == 'movie'
+            && movie.reviewTargetType == 'movie')
+          || (movie.mediaType == 'tv'
+            && movie.reviewTargetType == 'series');
+      }
+
+      function validReleaseYear(value) {
+        return value == null
+          || (value is int && value >= 1880 && value <= 2200);
+      }
+
+      function validPosterUrl(value) {
+        return value == null || (value is string && value.size() <= 1000);
+      }
+
+      function validGenre(value) {
+        return value is string && value.size() <= 50;
+      }
+
+      // Rules cannot iterate a list. The schema cap is 20, so each possible
+      // list position is checked explicitly after its size is bounded.
+      function validGenres(genres) {
+        return genres is list
+          && genres.size() <= 20
+          && (genres.size() < 1 || validGenre(genres[0]))
+          && (genres.size() < 2 || validGenre(genres[1]))
+          && (genres.size() < 3 || validGenre(genres[2]))
+          && (genres.size() < 4 || validGenre(genres[3]))
+          && (genres.size() < 5 || validGenre(genres[4]))
+          && (genres.size() < 6 || validGenre(genres[5]))
+          && (genres.size() < 7 || validGenre(genres[6]))
+          && (genres.size() < 8 || validGenre(genres[7]))
+          && (genres.size() < 9 || validGenre(genres[8]))
+          && (genres.size() < 10 || validGenre(genres[9]))
+          && (genres.size() < 11 || validGenre(genres[10]))
+          && (genres.size() < 12 || validGenre(genres[11]))
+          && (genres.size() < 13 || validGenre(genres[12]))
+          && (genres.size() < 14 || validGenre(genres[13]))
+          && (genres.size() < 15 || validGenre(genres[14]))
+          && (genres.size() < 16 || validGenre(genres[15]))
+          && (genres.size() < 17 || validGenre(genres[16]))
+          && (genres.size() < 18 || validGenre(genres[17]))
+          && (genres.size() < 19 || validGenre(genres[18]))
+          && (genres.size() < 20 || validGenre(genres[19]));
+      }
+
+      function validRetention(retention) {
+        return retention is map
+          && retention.keys().hasOnly([
+            'fetchedAt', 'refreshAfter', 'expiresAt'
+          ])
+          && retention.keys().hasAll([
+            'fetchedAt', 'refreshAfter', 'expiresAt'
+          ])
+          && retention.fetchedAt is timestamp
+          && retention.refreshAfter is timestamp
+          && retention.expiresAt is timestamp
+          && retention.fetchedAt < retention.refreshAfter
+          && retention.refreshAfter < retention.expiresAt;
+      }
+
+      function validCommonMovieFields(movie) {
+        return movie is map
+          && validMediaTarget(movie)
+          && validReviewTitle(movie.title)
+          && validReleaseYear(movie.releaseYear)
+          && validGenres(movie.genres)
+          && validPosterUrl(movie.posterUrl);
+      }
+
+      function validManualMovie(movie) {
+        return validCommonMovieFields(movie)
+          && movie.keys().hasOnly([
+            'mediaType', 'reviewTargetType', 'matchStatus', 'catalogId',
+            'title', 'releaseYear', 'genres', 'posterUrl'
+          ])
+          && movie.keys().hasAll([
+            'mediaType', 'reviewTargetType', 'matchStatus', 'catalogId',
+            'title', 'releaseYear', 'genres', 'posterUrl'
+          ])
+          && movie.matchStatus == 'manual'
+          && movie.catalogId == null;
+      }
+
+      function validMatchedMovie(movie) {
+        return validCommonMovieFields(movie)
+          && movie.keys().hasOnly([
+            'mediaType', 'reviewTargetType', 'matchStatus', 'catalogId',
+            'title', 'releaseYear', 'genres', 'posterUrl',
+            'catalogDataRetention'
+          ])
+          && movie.keys().hasAll([
+            'mediaType', 'reviewTargetType', 'matchStatus', 'catalogId',
+            'title', 'releaseYear', 'genres', 'posterUrl',
+            'catalogDataRetention'
+          ])
+          && movie.matchStatus == 'matched'
+          && movie.catalogId is string
+          && movie.catalogId.size() > 0
+          && movie.catalogId.size() <= 200
+          && validRetention(movie.catalogDataRetention);
+      }
+
+      function validMovie(movie) {
+        return validManualMovie(movie) || validMatchedMovie(movie);
+      }
+
+      function validUpdatedAt(data) {
+        return !('updatedAt' in data)
+          || (data.updatedAt is timestamp && data.updatedAt >= data.createdAt);
+      }
+
+      function validReview(data) {
+        return data.keys().hasOnly([
+            'userId', 'movieTitle', 'movie', 'reviewText', 'rating',
+            'visibility', 'createdAt', 'updatedAt', 'spoilerWarning'
+          ])
+          && data.keys().hasAll([
+            'userId', 'movieTitle', 'movie', 'reviewText', 'rating',
+            'visibility', 'createdAt', 'spoilerWarning'
+          ])
+          && data.userId is string
+          && validReviewTitle(data.movieTitle)
+          && validMovie(data.movie)
+          && validReviewText(data.reviewText)
+          && validRating(data.rating)
+          && validVisibility(data.visibility)
+          && data.spoilerWarning is bool
+          && data.createdAt is timestamp
+          && validUpdatedAt(data);
+      }
+
+      function preservesMatchedIdentity() {
+        return resource.data.movie.matchStatus != 'matched'
+          || (request.resource.data.movie.matchStatus == 'matched'
+            && request.resource.data.movie.catalogId
+              == resource.data.movie.catalogId
+            && request.resource.data.movie.mediaType
+              == resource.data.movie.mediaType
+            && request.resource.data.movie.reviewTargetType
+              == resource.data.movie.reviewTargetType);
+      }
+
       allow create: if signedIn()
         && request.resource.data.userId == request.auth.uid
-        && (!('visibility' in request.resource.data)
-          || request.resource.data.visibility in [
-            'public', 'followers', 'private'
-          ]);
+        && validReview(request.resource.data);
 
       allow read: if signedIn() && (
         resource.data.userId == request.auth.uid
@@ -123,10 +287,9 @@ service cloud.firestore {
       allow update: if signedIn()
         && resource.data.userId == request.auth.uid
         && request.resource.data.userId == request.auth.uid
-        && (!('visibility' in request.resource.data)
-          || request.resource.data.visibility in [
-            'public', 'followers', 'private'
-          ]);
+        && request.resource.data.createdAt == resource.data.createdAt
+        && validReview(request.resource.data)
+        && preservesMatchedIdentity();
 
       allow delete: if signedIn()
         && resource.data.userId == request.auth.uid;

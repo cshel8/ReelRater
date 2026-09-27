@@ -20,7 +20,8 @@ const expiredReview: Review = {
     new Date('2026-01-01T12:00:00.000Z')
   ),
   reviewText: 'Excellent',
-  rating: '5',
+  rating: 5,
+  spoilerWarning: false,
   visibility: 'private',
   createdAt: '2026-01-01T12:00:00.000Z',
   syncStatus: 'synced',

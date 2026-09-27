@@ -14,12 +14,21 @@ interface CachedReviewRow {
   movie_title: string;
   movie_json: string | null;
   review_text: string;
-  rating: string;
+  rating: number;
+  spoiler_warning: number;
   visibility: string;
   created_at: string;
 }
 
-function toReview(row: CachedReviewRow): Review {
+function toReview(row: CachedReviewRow): Review | null {
+  if (
+    !Number.isInteger(row.rating) ||
+    row.rating < 1 ||
+    row.rating > 5
+  ) {
+    return null;
+  }
+
   let parsedMovie: unknown = null;
   if (row.movie_json) {
     try {
@@ -35,6 +44,7 @@ function toReview(row: CachedReviewRow): Review {
     movie: readReviewMovieSnapshot(parsedMovie, row.movie_title),
     reviewText: row.review_text,
     rating: row.rating,
+    spoilerWarning: row.spoiler_warning === 1,
     visibility:
       row.visibility === 'public' || row.visibility === 'followers'
         ? row.visibility
@@ -48,7 +58,7 @@ export const sqliteCachedReviewRepository: CachedReviewRepository = {
   async listForUser(userId) {
     const database = await getSQLiteDatabase();
     const rows = await database.getAllAsync<CachedReviewRow>(
-      `SELECT review_id, movie_title, movie_json, review_text, rating, visibility, created_at
+      `SELECT review_id, movie_title, movie_json, review_text, rating, spoiler_warning, visibility, created_at
        FROM cached_reviews
        WHERE user_id = ?
        ORDER BY created_at DESC
@@ -57,7 +67,10 @@ export const sqliteCachedReviewRepository: CachedReviewRepository = {
       MAX_CACHED_REVIEWS
     );
 
-    return rows.map(toReview);
+    return rows.flatMap((row) => {
+      const review = toReview(row);
+      return review ? [review] : [];
+    });
   },
 
   async replaceForUser(userId, reviews) {
@@ -80,9 +93,10 @@ export const sqliteCachedReviewRepository: CachedReviewRepository = {
             movie_json,
             review_text,
             rating,
+            spoiler_warning,
             visibility,
             created_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           review.id,
           userId,
           review.movieTitle,
@@ -91,6 +105,7 @@ export const sqliteCachedReviewRepository: CachedReviewRepository = {
           ),
           review.reviewText,
           review.rating,
+          review.spoilerWarning ? 1 : 0,
           review.visibility,
           review.createdAt
         );
@@ -108,15 +123,17 @@ export const sqliteCachedReviewRepository: CachedReviewRepository = {
           movie_json,
           review_text,
           rating,
+          spoiler_warning,
           visibility,
           created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         review.id,
         userId,
         review.movieTitle,
         JSON.stringify(readReviewMovieSnapshot(review.movie, review.movieTitle)),
         review.reviewText,
         review.rating,
+        review.spoilerWarning ? 1 : 0,
         review.visibility,
         review.createdAt
       );

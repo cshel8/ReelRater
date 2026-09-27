@@ -75,6 +75,17 @@ describe('Signup screen', () => {
     expect(screen.queryByDisplayValue('PreviousHandle')).toBeNull();
   });
 
+  it('keeps both signup password fields secure without Automatic Strong Password semantics', () => {
+    const screen = render(<Signup />);
+    const password = screen.getByLabelText('Password');
+    const confirmation = screen.getByLabelText('Confirm password');
+
+    expect(password.props.secureTextEntry).toBe(true);
+    expect(password.props.textContentType).toBe('none');
+    expect(confirmation.props.secureTextEntry).toBe(true);
+    expect(confirmation.props.textContentType).toBe('none');
+  });
+
   it('saves the onboarding visibility as the future-review default', async () => {
     const screen = render(<Signup />);
 

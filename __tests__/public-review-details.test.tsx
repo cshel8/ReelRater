@@ -1,4 +1,4 @@
-import { render } from '@testing-library/react-native';
+import { fireEvent, render } from '@testing-library/react-native';
 import PublicReviewDetailsScreen from '@/components/reviews/PublicReviewDetailsScreen';
 import { publicProfileReviewService } from '@/services';
 
@@ -41,11 +41,32 @@ describe('Public review details screen', () => {
       },
       reviewText:
         'A thoughtful story about language, time, and human connection.',
-      rating: '5',
+      rating: 5,
+      spoilerWarning: false,
       visibility: 'followers',
       createdAt: '2026-07-18T12:00:00.000Z',
       syncStatus: 'synced',
     });
+  });
+
+  it('conceals a spoiler review until the viewer explicitly reveals it', async () => {
+    (publicProfileReviewService.getById as jest.Mock).mockResolvedValueOnce({
+      id: 'review-1',
+      authorId: 'author-1',
+      movieTitle: 'Arrival',
+      reviewText: 'The ending is revealed here.',
+      rating: 5,
+      spoilerWarning: true,
+      visibility: 'public',
+      createdAt: '2026-07-18T12:00:00.000Z',
+      syncStatus: 'synced',
+    });
+    const screen = render(<PublicReviewDetailsScreen />);
+
+    expect(await screen.findByText('Contains spoilers')).toBeTruthy();
+    expect(screen.queryByText('The ending is revealed here.')).toBeNull();
+    fireEvent.press(screen.getByText('Reveal Review'));
+    expect(screen.getByText('The ending is revealed here.')).toBeTruthy();
   });
 
   it('shows the complete review without owner controls', async () => {

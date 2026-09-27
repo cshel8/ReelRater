@@ -2,7 +2,7 @@ import { apiBaseUrl } from '@/config/api';
 import { firebaseAuthService } from '@/services/firebase/authService';
 import type { SocialGraphInitializationService } from '@/services/contracts';
 
-async function authorizedRequest(path: string, method: 'POST' | 'DELETE') {
+async function authorizedRequest(path: string, method: 'POST' | 'DELETE', body?: unknown) {
   const accessToken = await firebaseAuthService.getAccessToken();
   if (!accessToken) {
     throw new Error('Sign in again before changing follow relationships.');
@@ -13,7 +13,9 @@ async function authorizedRequest(path: string, method: 'POST' | 'DELETE') {
     headers: {
       Accept: 'application/json',
       Authorization: `Bearer ${accessToken}`,
+      ...(body ? { 'Content-Type': 'application/json' } : {}),
     },
+    ...(body ? { body: JSON.stringify(body) } : {}),
   });
   if (response.ok) {
     return;
@@ -55,6 +57,17 @@ export const httpSocialGraphInitializationService: SocialGraphInitializationServ
 };
 
 export const httpSocialGraphMutations = {
+  async relationshipStatuses(userIds: string[]) {
+    if (userIds.length === 0) return {} as Record<string, 'active' | 'pending' | null>;
+    const accessToken = await firebaseAuthService.getAccessToken();
+    if (!accessToken) throw new Error('Sign in again before loading relationship status.');
+    const response = await fetch(`${apiBaseUrl}/api/v1/social/relationship-statuses`, {
+      method: 'POST', headers: { Accept: 'application/json', 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` }, body: JSON.stringify({ userIds }),
+    });
+    if (!response.ok) throw new Error(`Unable to load relationship status (${response.status}).`);
+    const body = await response.json() as { statuses?: Record<string, unknown> };
+    return Object.fromEntries(Object.entries(body.statuses ?? {}).map(([id, status]) => [id, status === 'active' || status === 'pending' ? status : null]));
+  },
   follow(followedUserId: string) {
     return authorizedRequest(
       `/api/v1/social/follows/${encodeURIComponent(followedUserId)}`,

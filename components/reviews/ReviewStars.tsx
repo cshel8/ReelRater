@@ -3,12 +3,12 @@ import { StyleSheet, View } from 'react-native';
 import { colors } from '@/constants/colors';
 
 interface ReviewStarsProps {
-  rating: string;
+  rating: number;
   size?: number;
 }
 
 export function ReviewStars({ rating, size = 17 }: ReviewStarsProps) {
-  const numericRating = Math.min(5, Math.max(0, Number(rating) || 0));
+  const numericRating = Math.min(5, Math.max(0, rating || 0));
 
   return (
     <View

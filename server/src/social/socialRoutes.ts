@@ -13,6 +13,19 @@ const readBearerToken = (authorization: string | undefined) =>
 const routeParam = (value: string | string[] | undefined) =>
   typeof value === 'string' ? value : '';
 
+const readRelationshipStatusUserIds = (value: unknown) => {
+  if (!value || typeof value !== 'object' || !Array.isArray((value as { userIds?: unknown }).userIds)) {
+    throw new SocialGraphError('userIds must be an array.', 400);
+  }
+  const ids = (value as { userIds: unknown[] }).userIds;
+  if (ids.some((id) => typeof id !== 'string' || !id.trim())) {
+    throw new SocialGraphError('userIds must contain nonempty strings.', 400);
+  }
+  const unique = [...new Set(ids)];
+  if (unique.length > 20) throw new SocialGraphError('At most 20 unique userIds are allowed.', 400);
+  return unique as string[];
+};
+
 export function createSocialRouter(
   identityVerifier: AccountIdentityVerifier,
   socialGraph: SocialGraphService
@@ -52,6 +65,10 @@ export function createSocialRouter(
     await socialGraph.initializeCounters(userId);
     return { ok: true };
   }));
+
+  router.post('/relationship-statuses', withIdentity(async (userId, request) => ({
+    statuses: await socialGraph.relationshipStatuses(userId, readRelationshipStatusUserIds(request.body)),
+  })));
 
   router.post('/follows/:followedUserId', withIdentity(async (userId, request) =>
     socialGraph.follow(userId, routeParam(request.params.followedUserId))

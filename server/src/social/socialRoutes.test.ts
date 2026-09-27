@@ -9,6 +9,9 @@ let baseUrl: string;
 const calls: string[] = [];
 
 const socialGraph: SocialGraphService = {
+  async relationshipStatuses(_viewerId, _userIds) {
+    return {};
+  },
   async initializeCounters(userId) {
     calls.push(`initialize:${userId}`);
   },
@@ -109,4 +112,19 @@ test('social routes derive the actor from the verified token', async () => {
     'approve:verified-user:alex',
     'reject:verified-user:alex',
   ]);
+});
+
+test('relationship-statuses requires authentication and validates a bounded request', async () => {
+  const missing = await fetch(`${baseUrl}/api/v1/social/relationship-statuses`, { method: 'POST' });
+  assert.equal(missing.status, 401);
+  const valid = await fetch(`${baseUrl}/api/v1/social/relationship-statuses`, {
+    method: 'POST', headers: { Authorization: 'Bearer valid', 'Content-Type': 'application/json' },
+    body: JSON.stringify({ userIds: ['alex', 'alex', 'maya'] }),
+  });
+  assert.equal(valid.status, 200);
+  const oversized = await fetch(`${baseUrl}/api/v1/social/relationship-statuses`, {
+    method: 'POST', headers: { Authorization: 'Bearer valid', 'Content-Type': 'application/json' },
+    body: JSON.stringify({ userIds: Array.from({ length: 21 }, (_, index) => `user-${index}`) }),
+  });
+  assert.equal(oversized.status, 400);
 });

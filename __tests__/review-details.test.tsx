@@ -65,7 +65,8 @@ describe('Review Details screen', () => {
           movieTitle: 'Arrival',
           reviewText:
             'A thoughtful story about language, time, and human connection.',
-          rating: '5',
+          rating: 5,
+          spoilerWarning: true,
           visibility: 'private',
           createdAt: '2026-07-18T12:00:00.000Z',
           syncStatus: 'synced',
@@ -104,6 +105,7 @@ describe('Review Details screen', () => {
       screen.getByLabelText('Edit review text'),
       'An even better second viewing.'
     );
+    fireEvent.changeText(screen.getByLabelText('Edit movie title'), 'Contact');
     fireEvent.press(screen.getByLabelText('Edit rating to 4 out of 5 stars'));
     fireEvent.press(screen.getByText('Save Changes'));
 
@@ -112,15 +114,37 @@ describe('Review Details screen', () => {
         'user-1',
         expect.objectContaining({
           id: 'review-1',
-          movieTitle: 'Arrival',
+          movieTitle: 'Contact',
+          movie: expect.objectContaining({
+            matchStatus: 'manual',
+            catalogId: null,
+            title: 'Contact',
+          }),
           reviewText: 'An even better second viewing.',
-          rating: '4',
+          rating: 4,
         })
       );
     });
   });
 
-  it('preserves TV series identity when its title is edited', async () => {
+  it('preserves and updates the existing spoiler setting', async () => {
+    const screen = render(<ReviewDetailsScreen />);
+    await screen.findByText('Arrival');
+
+    fireEvent.press(screen.getByText('Edit Review'));
+    expect(screen.getByLabelText('Contains spoilers').props.accessibilityState.checked).toBe(true);
+    fireEvent.press(screen.getByLabelText('Contains spoilers'));
+    fireEvent.press(screen.getByText('Save Changes'));
+
+    await waitFor(() => {
+      expect(reviewService.update).toHaveBeenCalledWith(
+        'user-1',
+        expect.objectContaining({ spoilerWarning: false })
+      );
+    });
+  });
+
+  it('keeps a matched review target stable while editing review content', async () => {
     (reviewService.listForUser as jest.Mock).mockResolvedValue({
       reviews: [
         {
@@ -142,7 +166,8 @@ describe('Review Details screen', () => {
             },
           },
           reviewText: 'A streamlined version of a classic series.',
-          rating: '5',
+          rating: 5,
+          spoilerWarning: false,
           visibility: 'private',
           createdAt: '2026-07-18T12:00:00.000Z',
           syncStatus: 'synced',
@@ -155,22 +180,32 @@ describe('Review Details screen', () => {
     await screen.findByText('Dragon Ball Z Kai');
 
     fireEvent.press(screen.getByText('Edit Review'));
-    fireEvent.changeText(
-      screen.getByLabelText('Edit TV show title'),
-      'Dragon Ball Kai'
-    );
+    expect(screen.getByLabelText('Edit TV show title').props.editable).toBe(false);
+    fireEvent.changeText(screen.getByLabelText('Edit review text'), 'Still a great streamlined series.');
+    fireEvent.press(screen.getByLabelText('Edit rating to 4 out of 5 stars'));
+    fireEvent.press(screen.getByLabelText('Contains spoilers'));
+    fireEvent.press(screen.getByRole('radio', { name: /Public/ }));
     fireEvent.press(screen.getByText('Save Changes'));
 
     await waitFor(() => {
       expect(reviewService.update).toHaveBeenCalledWith(
         'user-1',
         expect.objectContaining({
-          movieTitle: 'Dragon Ball Kai',
+          movieTitle: 'Dragon Ball Z Kai',
+          reviewText: 'Still a great streamlined series.',
+          rating: 4,
+          spoilerWarning: true,
+          visibility: 'public',
           movie: expect.objectContaining({
             mediaType: 'tv',
             reviewTargetType: 'series',
-            matchStatus: 'manual',
-            catalogId: null,
+            matchStatus: 'matched',
+            catalogId: 'tmdb:tv:61709',
+            catalogDataRetention: {
+              fetchedAt: '2098-01-01T12:00:00.000Z',
+              refreshAfter: '2098-06-01T12:00:00.000Z',
+              expiresAt: '2098-06-29T12:00:00.000Z',
+            },
           }),
         })
       );

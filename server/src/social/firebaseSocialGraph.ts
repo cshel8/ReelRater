@@ -113,6 +113,16 @@ async function deleteRelationship(
 }
 
 export const firebaseSocialGraph: SocialGraphService = {
+  async relationshipStatuses(viewerId, userIds) {
+    const uniqueIds = [...new Set(userIds)].filter((id) => id !== viewerId);
+    const snapshots = await firestore.getAll(
+      ...uniqueIds.map((userId) => relationshipReference(viewerId, userId))
+    );
+    return Object.fromEntries(uniqueIds.map((userId, index) => {
+      const status = snapshots[index]?.data()?.status;
+      return [userId, status === 'active' || status === 'pending' ? status : null];
+    }));
+  },
   async initializeCounters(userId) {
     await firestore.runTransaction(async (transaction) => {
       const profile = await requireProfile(transaction, userId);

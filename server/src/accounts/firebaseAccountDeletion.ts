@@ -1,25 +1,27 @@
 import { applicationDefault, getApps, initializeApp } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
 import { getFirestore } from 'firebase-admin/firestore';
-import { getStorage } from 'firebase-admin/storage';
-import type { AccountDataDeleter, AccountIdentityVerifier } from './types.js';
+import { noRemoteUserAssetCleaner } from './noopUserAssetCleaner.js';
+import type {
+  AccountDataDeleter,
+  AccountIdentityVerifier,
+  UserAssetCleaner,
+} from './types.js';
 
 const projectId = process.env.FIREBASE_PROJECT_ID ?? 'reelrater-753a6';
-const storageBucket =
-  process.env.FIREBASE_STORAGE_BUCKET ?? 'reelrater-753a6.firebasestorage.app';
 const app =
   getApps()[0] ??
-  initializeApp({ credential: applicationDefault(), projectId, storageBucket });
+  initializeApp({ credential: applicationDefault(), projectId });
 
 const auth = getAuth(app);
 const firestore = getFirestore(app);
-const bucket = getStorage(app).bucket();
 
 async function deleteQuery(
+  firestoreInstance: FirebaseFirestore.Firestore,
   query: FirebaseFirestore.Query<FirebaseFirestore.DocumentData>
 ) {
   const snapshot = await query.get();
-  const writer = firestore.bulkWriter();
+  const writer = firestoreInstance.bulkWriter();
   for (const document of snapshot.docs) {
     writer.delete(document.ref);
   }
@@ -32,10 +34,11 @@ const readCounter = (value: unknown) =>
     : 0;
 
 async function deleteRelationshipAndRepairSurvivorCount(
+  firestoreInstance: FirebaseFirestore.Firestore,
   relationshipReference: FirebaseFirestore.DocumentReference,
   deletedUserId: string
 ) {
-  await firestore.runTransaction(async (transaction) => {
+  await firestoreInstance.runTransaction(async (transaction) => {
     const relationship = await transaction.get(relationshipReference);
     if (!relationship.exists) {
       return;
@@ -55,7 +58,7 @@ async function deleteRelationshipAndRepairSurvivorCount(
       transaction.delete(relationshipReference);
       return;
     }
-    const survivorReference = firestore.doc(`users/${survivorId}`);
+    const survivorReference = firestoreInstance.doc(`users/${survivorId}`);
     const survivor = await transaction.get(survivorReference);
     if (!survivor.exists) {
       transaction.delete(relationshipReference);
@@ -70,19 +73,40 @@ async function deleteRelationshipAndRepairSurvivorCount(
   });
 }
 
-async function deleteRelationshipsAndRepairCounts(userId: string) {
+async function deleteRelationshipsAndRepairCounts(
+  firestoreInstance: FirebaseFirestore.Firestore,
+  userId: string
+) {
   const [incoming, outgoing] = await Promise.all([
-    firestore.collection(`followRelationships/${userId}/followers`).get(),
-    firestore.collectionGroup('followers').where('followerId', '==', userId).get(),
+    firestoreInstance.collection(`followRelationships/${userId}/followers`).get(),
+    firestoreInstance.collectionGroup('followers').where('followerId', '==', userId).get(),
   ]);
   const relationships = new Map<string, FirebaseFirestore.DocumentReference>();
   for (const document of [...incoming.docs, ...outgoing.docs]) {
     relationships.set(document.ref.path, document.ref);
   }
   for (const reference of relationships.values()) {
-    await deleteRelationshipAndRepairSurvivorCount(reference, userId);
+    await deleteRelationshipAndRepairSurvivorCount(
+      firestoreInstance,
+      reference,
+      userId
+    );
   }
 }
+
+const isAuthUserNotFound = (error: unknown) =>
+  Boolean(
+    error &&
+      typeof error === 'object' &&
+      'code' in error &&
+      error.code === 'auth/user-not-found'
+  );
+
+type AccountDeletionDependencies = {
+  auth: ReturnType<typeof getAuth>;
+  firestore: FirebaseFirestore.Firestore;
+  userAssetCleaner?: UserAssetCleaner;
+};
 
 export const firebaseAccountIdentityVerifier: AccountIdentityVerifier = {
   async verify(idToken) {
@@ -94,32 +118,53 @@ export const firebaseAccountIdentityVerifier: AccountIdentityVerifier = {
   },
 };
 
-export const firebaseAccountDataDeleter: AccountDataDeleter = {
+/**
+ * Deletes account-owned data in independently retry-safe stages. Firestore,
+ * Storage, and Firebase Auth cannot participate in one global transaction, so
+ * each stage treats resources removed by an earlier attempt as completed.
+ */
+export const createFirebaseAccountDataDeleter = ({
+  auth: authInstance,
+  firestore: firestoreInstance,
+  userAssetCleaner = noRemoteUserAssetCleaner,
+}: AccountDeletionDependencies): AccountDataDeleter => ({
   async deleteAll(userId) {
-    const profileReference = firestore.doc(`users/${userId}`);
-    const profile = await profileReference.get();
-    const handleNormalized = profile.data()?.handleNormalized;
-
+    // These owner-ID queries remain valid even after an earlier attempt deleted
+    // the profile document. In particular, they recover an orphaned handle
+    // mapping without requiring a deletion-state/tombstone document.
     await deleteQuery(
-      firestore.collection('reviews').where('userId', '==', userId)
+      firestoreInstance,
+      firestoreInstance.collection('reviews').where('userId', '==', userId)
     );
-    await deleteRelationshipsAndRepairCounts(userId);
+    await deleteRelationshipsAndRepairCounts(firestoreInstance, userId);
+    await deleteQuery(
+      firestoreInstance,
+      firestoreInstance.collection('handles').where('userId', '==', userId)
+    );
 
-    const writer = firestore.bulkWriter();
-    writer.delete(profileReference);
-    writer.delete(firestore.doc(`userSettings/${userId}`));
-    if (typeof handleNormalized === 'string' && handleNormalized) {
-      const handleReference = firestore.doc(`handles/${handleNormalized}`);
-      const handle = await handleReference.get();
-      if (handle.data()?.userId === userId) {
-        writer.delete(handleReference);
-      }
-    }
+    const writer = firestoreInstance.bulkWriter();
+    writer.delete(firestoreInstance.doc(`userSettings/${userId}`));
+    writer.delete(firestoreInstance.doc(`users/${userId}`));
     await writer.close();
 
-    await bucket.deleteFiles({ prefix: `users/${userId}/`, force: true });
+    // Current ReelRater has no remote user-asset provider. If one is added in
+    // the future, its cleanup participates in this retry-safe sequence and a
+    // genuine provider failure remains retryable rather than being ignored.
+    await userAssetCleaner.deleteAssetsForUser(userId);
 
-    // Authentication is deliberately last so a partial cleanup can be retried.
-    await auth.deleteUser(userId);
+    // Authentication is deliberately last. A prior successful Auth deletion
+    // is also a completed state, while other Admin Auth failures remain errors.
+    try {
+      await authInstance.deleteUser(userId);
+    } catch (error) {
+      if (!isAuthUserNotFound(error)) {
+        throw error;
+      }
+    }
   },
-};
+});
+
+export const firebaseAccountDataDeleter = createFirebaseAccountDataDeleter({
+  auth,
+  firestore,
+});

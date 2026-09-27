@@ -26,8 +26,14 @@ import {
   ReviewVisibilitySelector,
   reviewVisibilityLabel,
 } from '@/components/reviews/ReviewVisibilitySelector';
+import { SpoilerWarningControl } from '@/components/reviews/SpoilerWarningControl';
 import { colors } from '@/constants/colors';
 import { reviewService } from '@/services';
+import {
+  MAX_REVIEW_TEXT_LENGTH,
+  MAX_REVIEW_TITLE_LENGTH,
+  reviewValidationMessage,
+} from '@/services/reviews/reviewValidation';
 import { userStore } from '@/store/userStore';
 import type { Review, ReviewVisibility } from '@/types/domain';
 import { formatReviewDate } from '@/utils/reviewFormatting';
@@ -39,6 +45,10 @@ import {
 } from '@/utils/reviewMovie';
 
 const STAR_VALUES = [1, 2, 3, 4, 5] as const;
+
+const isMatchedCatalogReview = (review: Review) =>
+  readReviewMediaSnapshot(review.movie, review.movieTitle).matchStatus ===
+  'matched';
 
 export default function ReviewDetailsScreen() {
   const navigation = useNavigation();
@@ -67,6 +77,7 @@ export default function ReviewDetailsScreen() {
   const [editedRating, setEditedRating] = useState(0);
   const [editedVisibility, setEditedVisibility] =
     useState<ReviewVisibility>('private');
+  const [editedSpoilerWarning, setEditedSpoilerWarning] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [pendingNavigationAction, setPendingNavigationAction] =
@@ -75,10 +86,12 @@ export default function ReviewDetailsScreen() {
   const hasUnsavedChanges =
     isEditing &&
     review !== null &&
-    (editedMovieTitle.trim() !== review.movieTitle ||
+    ((!isMatchedCatalogReview(review) &&
+      editedMovieTitle.trim() !== review.movieTitle) ||
       editedReviewText.trim() !== review.reviewText ||
-      editedRating !== Number(review.rating) ||
-      editedVisibility !== review.visibility);
+      editedRating !== review.rating ||
+      editedVisibility !== review.visibility ||
+      editedSpoilerWarning !== review.spoilerWarning);
 
   const loadReview = useCallback(async () => {
     if (!userId || !reviewId) {
@@ -92,8 +105,16 @@ export default function ReviewDetailsScreen() {
 
     try {
       const result = await reviewService.listForUser(userId);
-      const matchingReview =
+      const loadedReview =
         result.reviews.find((candidate) => candidate.id === reviewId) ?? null;
+      const matchingReview = loadedReview
+        ? {
+            ...loadedReview,
+            // Reviews created before spoiler warnings were introduced are safe
+            // to treat as unmarked while their local/remote record is updated.
+            spoilerWarning: loadedReview.spoilerWarning === true,
+          }
+        : null;
 
       setReview(matchingReview);
       if (
@@ -104,8 +125,9 @@ export default function ReviewDetailsScreen() {
         hasAppliedEditParameter.current = true;
         setEditedMovieTitle(matchingReview.movieTitle);
         setEditedReviewText(matchingReview.reviewText);
-        setEditedRating(Number(matchingReview.rating) || 0);
+        setEditedRating(matchingReview.rating);
         setEditedVisibility(matchingReview.visibility);
+        setEditedSpoilerWarning(matchingReview.spoilerWarning);
         setIsEditing(true);
       }
       if (!matchingReview) {
@@ -139,8 +161,9 @@ export default function ReviewDetailsScreen() {
 
     setEditedMovieTitle(review.movieTitle);
     setEditedReviewText(review.reviewText);
-    setEditedRating(Number(review.rating) || 0);
+    setEditedRating(review.rating);
     setEditedVisibility(review.visibility);
+    setEditedSpoilerWarning(review.spoilerWarning);
     setIsEditing(true);
   };
 
@@ -154,38 +177,39 @@ export default function ReviewDetailsScreen() {
   }, [hasUnsavedChanges, navigation, pendingNavigationAction]);
 
   const saveChanges = async (onSaved?: () => void) => {
-    if (
-      isSaving ||
-      !userId ||
-      !review ||
-      !editedMovieTitle.trim() ||
-      !editedReviewText.trim() ||
-      editedRating === 0
-    ) {
-      Alert.alert('Please complete every field and choose a rating');
+    const validationMessage = reviewValidationMessage({
+      movieTitle: editedMovieTitle,
+      reviewText: editedReviewText,
+      rating: editedRating,
+      spoilerWarning: editedSpoilerWarning,
+    });
+    if (isSaving || !userId || !review || validationMessage) {
+      if (validationMessage) {
+        Alert.alert(validationMessage);
+      }
       return;
     }
 
     setIsSaving(true);
     try {
-      const currentMedia = readReviewMediaSnapshot(
-        review.movie,
-        review.movieTitle
-      );
+      const currentMedia = readReviewMediaSnapshot(review.movie, review.movieTitle);
+      const matchedReview = currentMedia.matchStatus === 'matched';
       const updatedReview = await reviewService.update(userId, {
         ...review,
-        movieTitle: editedMovieTitle.trim(),
-        movie:
-          editedMovieTitle.trim() === review.movieTitle
-            ? currentMedia
-            : createManualMediaSnapshot(
-                editedMovieTitle,
-                currentMedia.mediaType === 'tv'
-                  ? { mediaType: 'tv', reviewTargetType: 'series' }
-                  : { mediaType: 'movie', reviewTargetType: 'movie' }
-              ),
+        // A matched review's catalog target is stable. Ordinary review edits
+        // change the author's content/settings, never its media identity.
+        movieTitle: matchedReview ? review.movieTitle : editedMovieTitle.trim(),
+        movie: matchedReview
+          ? currentMedia
+          : createManualMediaSnapshot(
+              editedMovieTitle,
+              currentMedia.mediaType === 'tv'
+                ? { mediaType: 'tv', reviewTargetType: 'series' }
+                : { mediaType: 'movie', reviewTargetType: 'movie' }
+            ),
         reviewText: editedReviewText.trim(),
-        rating: String(editedRating),
+        rating: editedRating,
+        spoilerWarning: editedSpoilerWarning,
         visibility: editedVisibility,
       });
       setReview(updatedReview);
@@ -317,6 +341,7 @@ export default function ReviewDetailsScreen() {
     review.movieTitle
   );
   const isTvReview = mediaSnapshot.mediaType === 'tv';
+  const isMatchedReview = mediaSnapshot.matchStatus === 'matched';
   const displayMovieTitle = getDisplayReviewMovieTitle(review);
   const movieMetadata = getDisplayReviewMovieMetadata(review);
 
@@ -409,7 +434,10 @@ export default function ReviewDetailsScreen() {
             accessibilityLabel={
               isTvReview ? 'Edit TV show title' : 'Edit movie title'
             }
+            accessibilityState={{ disabled: isMatchedReview }}
+            editable={!isMatchedReview}
             onChangeText={setEditedMovieTitle}
+            maxLength={MAX_REVIEW_TITLE_LENGTH}
             style={styles.input}
             value={editedMovieTitle}
           />
@@ -438,6 +466,7 @@ export default function ReviewDetailsScreen() {
           <TextInput
             accessibilityLabel="Edit review text"
             multiline
+            maxLength={MAX_REVIEW_TEXT_LENGTH}
             onChangeText={setEditedReviewText}
             style={[styles.input, styles.reviewInput]}
             textAlignVertical="top"
@@ -453,6 +482,13 @@ export default function ReviewDetailsScreen() {
           <Text style={styles.visibilityHint}>
             Changing this review does not change your profile default.
           </Text>
+
+          <Text style={styles.label}>Spoiler warning</Text>
+          <SpoilerWarningControl
+            disabled={isSaving}
+            onChange={setEditedSpoilerWarning}
+            value={editedSpoilerWarning}
+          />
 
           <View style={styles.editorActions}>
             <Pressable

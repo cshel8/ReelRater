@@ -22,12 +22,16 @@ const compareReviews = (
     return reviewTime(left) - reviewTime(right);
   }
   if (sort === 'highest') {
-    return Number(right.rating) - Number(left.rating) ||
-      reviewTime(right) - reviewTime(left);
+    return right.rating - left.rating ||
+      left.movieTitle.localeCompare(right.movieTitle) ||
+      reviewTime(right) - reviewTime(left) ||
+      right.id.localeCompare(left.id);
   }
   if (sort === 'lowest') {
-    return Number(left.rating) - Number(right.rating) ||
-      reviewTime(right) - reviewTime(left);
+    return left.rating - right.rating ||
+      left.movieTitle.localeCompare(right.movieTitle) ||
+      reviewTime(right) - reviewTime(left) ||
+      right.id.localeCompare(left.id);
   }
   return reviewTime(right) - reviewTime(left);
 };

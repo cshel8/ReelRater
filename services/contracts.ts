@@ -30,7 +30,9 @@ export interface AuthService {
 }
 
 export interface AccountDeletionService {
-  deleteCurrentAccount(password: string): Promise<void>;
+  deleteCurrentAccount(password: string): Promise<{
+    localCleanupComplete: boolean;
+  }>;
 }
 
 export interface ConnectivityService {
@@ -138,6 +140,32 @@ export interface CommunityFeedService {
     viewerId: string,
     options?: CommunityFeedOptions
   ): Promise<CommunityFeedResult>;
+}
+
+export type PublicReviewPageCursor = { values: unknown[] };
+export type PublicReviewPage = {
+  reviews: SharedReview[];
+  nextCursor: PublicReviewPageCursor | null;
+};
+
+export interface PublicReviewRepository {
+  listPublicPage(options: {
+    mediaFilter: CommunityReviewMediaFilter;
+    sort: CommunityReviewSort;
+    cursor?: PublicReviewPageCursor | null;
+    maximumResults?: number;
+  }): Promise<PublicReviewPage>;
+}
+
+export interface EveryoneCommunityFeedService {
+  listPage(
+    viewerId: string,
+    options: {
+      mediaFilter: CommunityReviewMediaFilter;
+      sort: CommunityReviewSort;
+      cursor?: PublicReviewPageCursor | null;
+    }
+  ): Promise<Omit<PublicReviewPage, 'reviews'> & { reviews: CommunityReview[] }>;
 }
 
 export interface PublicProfileReviewResult {

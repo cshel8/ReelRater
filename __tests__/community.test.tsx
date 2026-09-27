@@ -1,9 +1,11 @@
 import { fireEvent, render, waitFor } from '@testing-library/react-native';
 import { router } from 'expo-router';
+import { StyleSheet } from 'react-native';
 import CommunityScreen from '@/app/(tabs)/community';
 import {
   communityFeedService,
   communityPreferenceRepository,
+  everyoneCommunityFeedService,
   settingsService,
 } from '@/services';
 import {
@@ -13,7 +15,10 @@ import {
 } from '@/services/community/communitySessionState';
 
 jest.mock('@expo/vector-icons', () => ({
-  Ionicons: 'Ionicons',
+  Ionicons: ({ name }: { name: string }) => {
+    const { Text } = require('react-native');
+    return <Text testID={`icon-${name}`} />;
+  },
 }));
 
 jest.mock('expo-router', () => ({
@@ -47,6 +52,7 @@ jest.mock('@/services', () => ({
   communityFeedService: {
     list: jest.fn(),
   },
+  everyoneCommunityFeedService: { listPage: jest.fn() },
   communityPreferenceRepository: {
     getForUser: jest.fn(),
     setForUser: jest.fn(),
@@ -75,7 +81,7 @@ describe('Community screen', () => {
     });
     const screen = render(<CommunityScreen />);
 
-    await screen.findByText('Find your community');
+    await screen.findByText('Your Following feed is quiet');
     fireEvent.press(screen.getByText('Find People'));
 
     expect(router.push).toHaveBeenCalledWith('/community/find-people');
@@ -88,8 +94,8 @@ describe('Community screen', () => {
     });
     const screen = render(<CommunityScreen />);
 
-    expect(await screen.findByText('No community reviews yet')).toBeTruthy();
-    expect(screen.queryByText('Find People')).toBeNull();
+    expect(await screen.findByText('Your Following feed is quiet')).toBeTruthy();
+    expect(screen.getByText('Explore Everyone')).toBeTruthy();
   });
 
   it('renders a shared review with its author', async () => {
@@ -108,10 +114,59 @@ describe('Community screen', () => {
             accountPrivacy: 'public',
           },
           movieTitle: 'Arrival',
+          movie: {
+            catalogId: 'tmdb:movie:329865',
+            catalogDataRetention: {
+              fetchedAt: '2026-09-01T00:00:00.000Z',
+              refreshAfter: '2027-01-01T00:00:00.000Z',
+              expiresAt: '2027-03-01T00:00:00.000Z',
+            },
+            genres: ['Drama', 'Science Fiction'],
+            matchStatus: 'matched',
+            mediaType: 'movie',
+            posterUrl: null,
+            releaseYear: 2016,
+            reviewTargetType: 'movie',
+            title: 'Arrival',
+          },
           reviewText: 'Thoughtful science fiction.',
-          rating: '5',
+          rating: 5,
           visibility: 'followers',
           createdAt: '2026-07-19T12:00:00.000Z',
+          syncStatus: 'synced',
+        },
+        {
+          id: 'review-tv-1',
+          authorId: 'author-1',
+          author: {
+            id: 'author-1',
+            displayName: 'Alex',
+            handle: 'AlexMovies',
+            handleNormalized: 'alexmovies',
+            profileImage: null,
+            accountPrivacy: 'public',
+          },
+          movieTitle: 'The Bear',
+          movie: {
+            catalogId: 'tmdb:tv:136311',
+            catalogDataRetention: {
+              fetchedAt: '2026-09-01T00:00:00.000Z',
+              refreshAfter: '2027-01-01T00:00:00.000Z',
+              expiresAt: '2027-03-01T00:00:00.000Z',
+            },
+            genres: ['Drama'],
+            matchStatus: 'matched',
+            mediaType: 'tv',
+            posterUrl: null,
+            releaseYear: 2022,
+            reviewTargetType: 'series',
+            title: 'The Bear',
+          },
+          reviewText: 'A tense kitchen drama.',
+          rating: 4,
+          spoilerWarning: false,
+          visibility: 'public',
+          createdAt: '2026-07-18T12:00:00.000Z',
           syncStatus: 'synced',
         },
       ],
@@ -119,11 +174,22 @@ describe('Community screen', () => {
     const screen = render(<CommunityScreen />);
 
     expect(await screen.findByText('Arrival')).toBeTruthy();
-    expect(screen.getByText('Alex')).toBeTruthy();
-    expect(screen.getByText('@AlexMovies')).toBeTruthy();
-    expect(screen.getByText('Followers')).toBeTruthy();
+    expect(screen.getAllByText('Alex')).toHaveLength(2);
+    expect(screen.getAllByText('@AlexMovies')).toHaveLength(2);
+    expect(screen.getByText('2016 · Drama, Science Fiction')).toBeTruthy();
+    expect(screen.getByText('Movie')).toBeTruthy();
+    expect(screen.getByText('2022 · Drama')).toBeTruthy();
+    expect(screen.getByText('TV Show')).toBeTruthy();
+    expect(screen.getByLabelText('Poster placeholder for Arrival')).toBeTruthy();
+    expect(
+      StyleSheet.flatten(
+        screen.getByLabelText('Poster placeholder for Arrival').props.style
+      ).height
+    ).toBe(166);
+    expect(screen.getByText('Thoughtful science fiction.')).toBeTruthy();
+    expect(screen.queryByTestId('icon-ellipsis-horizontal')).toBeNull();
 
-    fireEvent.press(screen.getByLabelText("View Alex's profile"));
+    fireEvent.press(screen.getAllByLabelText("View Alex's profile")[0]);
     expect(router.push).toHaveBeenCalledWith({
       pathname: '/community/[userId]',
       params: { userId: 'author-1' },
@@ -146,7 +212,7 @@ describe('Community screen', () => {
     });
     const screen = render(<CommunityScreen />);
 
-    await screen.findByText('No community reviews yet');
+    await screen.findByText('Your Following feed is quiet');
     fireEvent.press(
       screen.getByLabelText('Filter and sort community reviews')
     );
@@ -160,7 +226,7 @@ describe('Community screen', () => {
         sort: 'highest',
       });
     });
-    expect(await screen.findByText('No TV show reviews yet')).toBeTruthy();
+    expect(await screen.findByText('No reviews for this filter')).toBeTruthy();
     expect(communityPreferenceRepository.setForUser).toHaveBeenCalledWith(
       'viewer-1',
       { mediaFilter: 'tv', sort: 'highest' }
@@ -184,7 +250,7 @@ describe('Community screen', () => {
     });
     const screen = render(<CommunityScreen />);
 
-    await screen.findByText('No TV show reviews yet');
+    await screen.findByText('No reviews for this filter');
     fireEvent.press(
       screen.getByLabelText('Filter and sort community reviews')
     );
@@ -205,7 +271,7 @@ describe('Community screen', () => {
     });
     const screen = render(<CommunityScreen />);
 
-    await screen.findByText('No community reviews yet');
+    await screen.findByText('Your Following feed is quiet');
     fireEvent.press(
       screen.getByLabelText('Filter and sort community reviews')
     );
@@ -230,7 +296,7 @@ describe('Community screen', () => {
     });
     const screen = render(<CommunityScreen />);
 
-    await screen.findByText('No TV show reviews yet');
+    await screen.findByText('No reviews for this filter');
     fireEvent.press(
       screen.getByLabelText('Filter and sort community reviews')
     );
@@ -266,10 +332,9 @@ describe('Community screen', () => {
     });
     const screen = render(<CommunityScreen />);
 
-    await screen.findByText('No TV show reviews yet');
-    fireEvent.press(screen.getByLabelText('Search community reviews'));
+    await screen.findByText('No reviews for this filter');
     fireEvent.changeText(
-      screen.getAllByLabelText('Search community reviews')[1],
+      screen.getByLabelText('Search community reviews'),
       'Batman'
     );
     fireEvent.press(
@@ -299,7 +364,7 @@ describe('Community screen', () => {
     });
     const screen = render(<CommunityScreen />);
 
-    await screen.findByText('No TV show reviews yet');
+    await screen.findByText('No reviews for this filter');
     setCommunityScrollOffset('viewer-1', 260);
     fireEvent.press(
       screen.getByLabelText('Filter and sort community reviews')
@@ -362,10 +427,9 @@ describe('Community screen', () => {
     });
     const screen = render(<CommunityScreen />);
 
-    await screen.findByText('No community reviews yet');
-    fireEvent.press(screen.getByLabelText('Search community reviews'));
+    await screen.findByText('Your Following feed is quiet');
     fireEvent.changeText(
-      screen.getAllByLabelText('Search community reviews')[1],
+      screen.getByLabelText('Search community reviews'),
       'arrival'
     );
 
@@ -377,5 +441,55 @@ describe('Community screen', () => {
       });
     });
     expect(communityPreferenceRepository.setForUser).not.toHaveBeenCalled();
+  });
+
+  it('starts in Following and does not populate Everyone with Following data', async () => {
+    (communityFeedService.list as jest.Mock).mockResolvedValue({
+      followsAnyone: true,
+      reviews: [
+        {
+          id: 'review-1', authorId: 'author-1', author: { id: 'author-1', displayName: 'Alex', handle: 'AlexMovies', handleNormalized: 'alexmovies', profileImage: null, accountPrivacy: 'public' },
+          movieTitle: 'Arrival', reviewText: 'Thoughtful science fiction.', rating: 5, spoilerWarning: false, visibility: 'public', createdAt: '2026-07-19T12:00:00.000Z', syncStatus: 'synced',
+        },
+      ],
+    });
+    const screen = render(<CommunityScreen />);
+
+    expect(screen.getByText('Following')).toBeTruthy();
+    expect(await screen.findByText('Arrival')).toBeTruthy();
+    (everyoneCommunityFeedService.listPage as jest.Mock).mockResolvedValue({ reviews: [], nextCursor: null });
+    fireEvent.press(screen.getByText('Everyone'));
+
+    expect(await screen.findByText('No public reviews yet')).toBeTruthy();
+    expect(screen.queryByText('Arrival')).toBeNull();
+    expect(communityFeedService.list).toHaveBeenCalledTimes(1);
+  });
+
+  it('conceals a spoiler review until Reveal Review is pressed', async () => {
+    (communityFeedService.list as jest.Mock).mockResolvedValue({
+      followsAnyone: true,
+      reviews: [
+        {
+          id: 'spoiler-1', authorId: 'author-1', author: { id: 'author-1', displayName: 'Alex', handle: 'AlexMovies', handleNormalized: 'alexmovies', profileImage: null, accountPrivacy: 'public' },
+          movieTitle: 'The Last Of Us', reviewText: 'The ending changes everything.', rating: 4, spoilerWarning: true, visibility: 'public', createdAt: '2026-07-19T12:00:00.000Z', syncStatus: 'synced',
+        },
+      ],
+    });
+    const screen = render(<CommunityScreen />);
+
+    expect(await screen.findByText('Contains spoilers')).toBeTruthy();
+    expect(screen.queryByText('The ending changes everything.')).toBeNull();
+    expect(
+      StyleSheet.flatten(
+        screen.getByLabelText('Poster placeholder for The Last Of Us').props.style
+      ).height
+    ).toBe(190);
+    fireEvent.press(screen.getByText('Reveal Review'));
+    expect(screen.getByText('The ending changes everything.')).toBeTruthy();
+    expect(
+      StyleSheet.flatten(
+        screen.getByLabelText('Poster placeholder for The Last Of Us').props.style
+      ).height
+    ).toBe(166);
   });
 });
