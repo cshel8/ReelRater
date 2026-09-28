@@ -25,7 +25,9 @@ export const httpFollowService: FollowService = {
   },
   listFollowers: firebaseFollowService.listFollowers,
   listFollowing: firebaseFollowService.listFollowing,
+  listFollowingFromServer: firebaseFollowService.listFollowingFromServer,
   listPendingRequests: firebaseFollowService.listPendingRequests,
   isFollowing: firebaseFollowService.isFollowing,
   getStatus: firebaseFollowService.getStatus,
+  getStatusFromServer: firebaseFollowService.getStatusFromServer,
 };

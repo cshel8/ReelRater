@@ -3,6 +3,73 @@
 Concise developer history of meaningful ReelRater architecture decisions,
 security changes, backend work, migrations, bug fixes, and feature behavior.
 
+## **2026-09-27 — Community Offline Cache Persistence Foundation**
+
+### Added
+
+- Added viewer-scoped SQLite Community review snapshots and normalized
+  Following/Everyone feed-membership records as a foundation for later offline
+  Community work.
+- Kept Community cache persistence separate from the My Reviews cache and
+  behind a dedicated local repository boundary.
+- Community cache storage rejects Only Me/private content and is cleared with
+  the owning account's local data.
+- Added safe snapshot deserialization that rejects malformed or inconsistent
+  cached review/author/visibility metadata before it can reach Community.
+- Bounded each viewer's cache to 80 unique review snapshots, with up to 50
+  Following and 50 Everyone feed memberships; unreferenced snapshots are
+  pruned without removing a review still present in the other feed.
+- Added policy primitives for 7-day Public content freshness, 24-hour
+  Followers Only content freshness, and 6-hour Followers Only authorization
+  validity. Content freshness and authorization validity remain distinct.
+- Everyone now caches validated Public Community reviews after successful
+  authoritative remote pages and uses eligible saved Public reviews only when
+  initial remote loading fails.
+- Saved Everyone fallback keeps the existing media filter and sort semantics,
+  shows a small offline/saved indicator, and never presents a fake remote
+  pagination cursor or offline Follow action.
+- Following now caches Public reviews and Followers Only reviews only after
+  server-backed active-follow validation and server-backed visibility-aware
+  review reads succeed. Firestore local-cache results cannot establish or
+  refresh the six-hour protected authorization window; when the server is
+  unavailable, Following falls through to SQLite and existing authorization
+  expiration continues to govern protected offline visibility.
+- Expired or malformed Followers Only authorization hides that review from
+  saved Following fallback; its 24-hour content freshness remains a separate
+  requirement. Public snapshots may serve both feeds for the same viewer
+  without duplicating payload data.
+- A successful self-unfollow now immediately removes that viewer's protected
+  cached content for the author and removes the author from Following cache
+  membership. Public snapshots remain when referenced by Everyone; local
+  cleanup failures do not undo the successful remote mutation and fail closed
+  for the current session instead.
+- Successful sign-out clears the signing viewer's Community snapshots and feed
+  memberships without touching another viewer's rows. Account deletion retains
+  its existing local Community cleanup. Remote relationship or review changes
+  made elsewhere still require later reconnect reconciliation.
+- Added reconnect reconciliation without new remote infrastructure. It uses
+  server-authoritative relationship checks as the privacy priority, purging
+  protected cache after authoritative relationship loss and refreshing the
+  six-hour authorization only after an active server result. Each reconnect
+  deterministically revalidates at most 20 cached reviews: protected entries
+  first, then oldest content validation time, then review ID. Authoritative
+  unreadability removes stale local content; transport failures do not extend
+  authorization or validation. Community tab-return behavior remains separate.
+
+### Scope
+
+- Everyone and Following saved snapshots are bounded, not archives. This work
+  does not add cache-first rendering, continuous while-online reconciliation,
+  remote push/background jobs, or Community tab-return refresh behavior.
+- Expo Go could not cold-launch this development project with the Mac/network
+  completely offline; this is a development-environment limitation, not
+  evidence that ReelRater persistence failed. Warm-session fallback testing
+  and automated persistence tests provide the current offline evidence.
+- Checkpoint 6 automated reconciliation validation passed. Its two-session
+  runtime test remains deferred: cache a Maya Followers Only review as Connor,
+  remove Connor as Maya from another authenticated session, reconnect Connor,
+  then verify the protected review cannot return after going offline again.
+
 ## **2026-09-26 — Community Everyone Public Feed Checkpoint**
 
 ### Added

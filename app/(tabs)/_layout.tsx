@@ -3,8 +3,9 @@ import { Ionicons } from '@expo/vector-icons';
 import { Tabs } from 'expo-router';
 import { useEffect } from 'react';
 import { colors } from '@/constants/colors';
-import { movieCacheMaintenanceService, reviewService } from '@/services';
+import { communityReconnectReconciliationService, movieCacheMaintenanceService, reviewService } from '@/services';
 import { userStore } from '@/store/userStore';
+import { beginCommunitySessionForUser } from '@/services/community/communitySessionState';
 
 export default function Layout() {
     const userId = userStore((state) => state.userId);
@@ -14,8 +15,18 @@ export default function Layout() {
             return;
         }
 
+        beginCommunitySessionForUser(userId);
+
         return NetInfo.addEventListener((state) => {
             if (state.isConnected && state.isInternetReachable !== false) {
+                void communityReconnectReconciliationService
+                    .handleConnectivityChange(userId, true)
+                    .catch((reconciliationError) => {
+                        const message = reconciliationError instanceof Error
+                            ? reconciliationError.message
+                            : 'Unknown Community reconciliation error';
+                        console.log('Community reconnect reconciliation failed:', message);
+                    });
                 void reviewService.syncPending(userId).catch((syncError) => {
                     const message = syncError instanceof Error
                         ? syncError.message
@@ -28,6 +39,8 @@ export default function Layout() {
                         : 'Unknown cache maintenance error';
                     console.log('Movie cache maintenance failed:', message);
                 });
+            } else {
+                void communityReconnectReconciliationService.handleConnectivityChange(userId, false);
             }
         });
     }, [userId]);

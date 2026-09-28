@@ -17,8 +17,8 @@ import { CommunityModeToggle, type CommunityMode } from '@/components/community/
 import { CommunityReviewCard } from '@/components/community/CommunityReviewCard';
 import { colors } from '@/constants/colors';
 import {
-  communityFeedService,
-  everyoneCommunityFeedService,
+  cachedFollowingCommunityFeedService,
+  cachedEveryoneCommunityFeedService,
   followService,
   communityPreferenceRepository,
   settingsService,
@@ -198,6 +198,8 @@ export default function CommunityScreen() {
   const [everyoneLoading, setEveryoneLoading] = useState(false);
   const [everyoneLoadingMore, setEveryoneLoadingMore] = useState(false);
   const [everyoneError, setEveryoneError] = useState<string | null>(null);
+  const [everyoneSource, setEveryoneSource] = useState<'remote' | 'cache'>('remote');
+  const [followingSource, setFollowingSource] = useState<'remote' | 'cache'>('remote');
   const [followsAnyone, setFollowsAnyone] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -235,6 +237,13 @@ export default function CommunityScreen() {
     setSavedDefaultPreferences({ mediaFilter: 'all', sort: 'newest' });
     setSearchQuery('');
     setAppliedSearchQuery('');
+    setReviews([]);
+    setEveryoneReviews([]);
+    setEveryoneCursor(null);
+    setError(null);
+    setEveryoneError(null);
+    setFollowingSource('remote');
+    setEveryoneSource('remote');
 
     if (!userId) {
       setPreferencesReady(true);
@@ -306,7 +315,7 @@ export default function CommunityScreen() {
       setError(null);
 
       try {
-        const result = await communityFeedService.list(userId, {
+        const result = await cachedFollowingCommunityFeedService.list(userId, {
           mediaFilter: selectedMediaFilter,
           ...(appliedSearchQuery
             ? { searchQuery: appliedSearchQuery }
@@ -318,6 +327,12 @@ export default function CommunityScreen() {
         }
         setReviews(result.reviews);
         setFollowsAnyone(result.followsAnyone);
+        setFollowingSource(result.source);
+        setError(
+          result.source === 'cache' && result.reviews.length === 0
+            ? result.remoteError
+            : null
+        );
         hasLoadedFeedRef.current = true;
       } catch (loadError) {
         if (requestId !== feedRequestIdRef.current) {
@@ -358,12 +373,20 @@ export default function CommunityScreen() {
     append ? setEveryoneLoadingMore(true) : setEveryoneLoading(true);
     if (!append) setEveryoneError(null);
     try {
-      const page = await everyoneCommunityFeedService.listPage(userId, {
+      const page = await cachedEveryoneCommunityFeedService.listPage(userId, {
         mediaFilter: selectedMediaFilter, sort: selectedSort,
         ...(append ? { cursor: everyoneCursor } : {}),
       });
       setEveryoneReviews((current) => append ? [...current, ...page.reviews.filter((review) => !current.some((existing) => existing.id === review.id))] : page.reviews);
       setEveryoneCursor(page.nextCursor);
+      setEveryoneSource(page.source);
+      if (!append) {
+        setEveryoneError(
+          page.source === 'cache' && page.reviews.length === 0
+            ? page.remoteError
+            : null
+        );
+      }
     } catch (loadError) {
       setEveryoneError(loadError instanceof Error ? loadError.message : 'Public reviews could not be loaded.');
     } finally { setEveryoneLoading(false); setEveryoneLoadingMore(false); }
@@ -530,7 +553,7 @@ export default function CommunityScreen() {
   };
 
   const getFollowingEmptyState = (): CommunityEmptyStateKind => {
-    if (error) return 'error';
+    if (error) return followingSource === 'cache' ? 'following-saved-empty' : 'error';
     if (searchQuery.trim()) return 'search';
     if (selectedMediaFilter !== 'all') return 'filtered';
     return followsAnyone ? 'following-quiet' : 'following-empty';
@@ -563,6 +586,16 @@ export default function CommunityScreen() {
         {filterHeaderButton()}
       </View>
       {communityMode === 'everyone' ? <Text style={styles.searchComingSoon}>Global Community search coming soon</Text> : null}
+      {communityMode === 'everyone' && everyoneSource === 'cache' && everyoneReviews.length > 0 ? (
+        <Text accessibilityLiveRegion="polite" style={styles.offlineIndicator}>
+          Offline · Showing saved reviews
+        </Text>
+      ) : null}
+      {communityMode === 'following' && followingSource === 'cache' && reviews.length > 0 ? (
+        <Text accessibilityLiveRegion="polite" style={styles.offlineIndicator}>
+          Offline · Showing saved reviews
+        </Text>
+      ) : null}
     </View>
   );
 
@@ -600,7 +633,7 @@ export default function CommunityScreen() {
       scrollEventThrottle={16}
       ListEmptyComponent={
         <CommunityEmptyState
-          kind={communityMode === 'everyone' ? (everyoneError ? 'error' : selectedMediaFilter !== 'all' ? 'filtered' : 'everyone-empty') : getFollowingEmptyState()}
+          kind={communityMode === 'everyone' ? (everyoneError ? 'everyone-saved-empty' : selectedMediaFilter !== 'all' ? 'filtered' : 'everyone-empty') : getFollowingEmptyState()}
           onExploreEveryone={() => changeCommunityMode('everyone')}
           onFindPeople={() => router.push('/community/find-people')}
           onRetry={() => void (communityMode === 'everyone' ? loadEveryone() : loadFeed())}
@@ -617,8 +650,8 @@ export default function CommunityScreen() {
           tintColor={colors.reviewAccent}
         />
       }
-      renderItem={({ item }) => <CommunityReviewCard review={item} onFollow={communityMode === 'everyone' && item.authorId !== userId ? async (review) => { await followService.follow(userId ?? '', review.authorId); setEveryoneReviews((current) => current.map((candidate) => candidate.authorId === review.authorId ? { ...candidate, relationshipStatus: review.author.accountPrivacy === 'private' ? 'pending' : 'active' } : candidate)); } : undefined} />}
-      ListFooterComponent={communityMode === 'everyone' && everyoneReviews.length > 0 && everyoneCursor ? <Pressable accessibilityRole="button" accessibilityLabel="Load more public reviews" disabled={everyoneLoadingMore} onPress={() => void loadEveryone(true)} style={styles.loadMoreButton}><Text style={styles.loadMoreText}>{everyoneLoadingMore ? 'Loading…' : 'Load more'}</Text></Pressable> : null}
+      renderItem={({ item }) => <CommunityReviewCard review={item} onFollow={communityMode === 'everyone' && everyoneSource === 'remote' && item.authorId !== userId ? async (review) => { await followService.follow(userId ?? '', review.authorId); setEveryoneReviews((current) => current.map((candidate) => candidate.authorId === review.authorId ? { ...candidate, relationshipStatus: review.author.accountPrivacy === 'private' ? 'pending' : 'active' } : candidate)); } : undefined} />}
+      ListFooterComponent={communityMode === 'everyone' && everyoneSource === 'remote' && everyoneReviews.length > 0 && everyoneCursor ? <Pressable accessibilityRole="button" accessibilityLabel="Load more public reviews" disabled={everyoneLoadingMore} onPress={() => void loadEveryone(true)} style={styles.loadMoreButton}><Text style={styles.loadMoreText}>{everyoneLoadingMore ? 'Loading…' : 'Load more'}</Text></Pressable> : null}
       showsVerticalScrollIndicator={false}
       />
       <CommunityOptionsModal
@@ -686,6 +719,7 @@ const styles = StyleSheet.create({
     paddingVertical: 0,
   },
   searchComingSoon: { color: '#7D8490', fontSize: 12, marginTop: -9, marginBottom: 7 },
+  offlineIndicator: { color: '#7D8490', fontSize: 12, fontWeight: '600', marginTop: -6 },
   loadMoreButton: { alignItems: 'center', paddingVertical: 16 },
   loadMoreText: { color: colors.reviewAccentText, fontWeight: '700' },
   list: {

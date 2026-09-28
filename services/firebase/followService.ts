@@ -4,7 +4,9 @@ import {
   deleteDoc,
   doc,
   getDoc,
+  getDocFromServer,
   getDocs,
+  getDocsFromServer,
   query,
   runTransaction,
   serverTimestamp,
@@ -175,6 +177,17 @@ export const firebaseFollowService: FollowService = {
     return mapRelationships(snapshot.docs, 'active');
   },
 
+  async listFollowingFromServer(userId) {
+    const followingQuery = query(
+      collectionGroup(db, 'followers'),
+      where('followerId', '==', userId),
+      where('status', '==', 'active')
+    );
+    const snapshot = await getDocsFromServer(followingQuery);
+
+    return mapRelationships(snapshot.docs, 'active');
+  },
+
   async listPendingRequests(userId) {
     const snapshot = await getDocs(
       collection(db, 'followRelationships', userId, 'followers')
@@ -203,6 +216,17 @@ export const firebaseFollowService: FollowService = {
       return null;
     }
 
+    const status = snapshot.data().status;
+    return status === 'active' || status === 'pending' ? status : null;
+  },
+
+  async getStatusFromServer(followerId, followedUserId) {
+    const snapshot = await getDocFromServer(
+      relationshipReference(followerId, followedUserId)
+    );
+    if (!snapshot.exists()) {
+      return null;
+    }
     const status = snapshot.data().status;
     return status === 'active' || status === 'pending' ? status : null;
   },

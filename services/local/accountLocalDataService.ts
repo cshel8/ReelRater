@@ -18,6 +18,14 @@ export const accountLocalDataService = {
           'DELETE FROM review_target_identities WHERE user_id = ?',
           userId
         );
+        await transaction.runAsync(
+          'DELETE FROM community_cached_feed_entries WHERE viewer_uid = ?',
+          userId
+        );
+        await transaction.runAsync(
+          'DELETE FROM community_cached_reviews WHERE viewer_uid = ?',
+          userId
+        );
       }),
       asyncStorageCommunityPreferenceRepository.removeForUser(userId),
     ]);

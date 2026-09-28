@@ -1,7 +1,7 @@
 import * as SQLite from 'expo-sqlite';
 
 const DATABASE_NAME = 'reel-rater.db';
-const DATABASE_VERSION = 11;
+const DATABASE_VERSION = 12;
 
 let databasePromise: Promise<SQLite.SQLiteDatabase> | null = null;
 
@@ -241,6 +241,47 @@ async function migrate(database: SQLite.SQLiteDatabase): Promise<void> {
           ON cached_reviews(user_id, created_at DESC);
 
         PRAGMA user_version = 11;
+      `);
+    }
+
+    if (currentVersion < 12) {
+      await transaction.execAsync(`
+        CREATE TABLE IF NOT EXISTS community_cached_reviews (
+          viewer_uid TEXT NOT NULL,
+          review_id TEXT NOT NULL,
+          author_id TEXT NOT NULL,
+          visibility TEXT NOT NULL CHECK(visibility IN ('public', 'followers')),
+          review_json TEXT NOT NULL,
+          content_validated_at TEXT NOT NULL,
+          authorized_at TEXT,
+          authorization_expires_at TEXT,
+          last_relationship_validated_at TEXT,
+          cached_relationship_status TEXT CHECK(
+            cached_relationship_status IS NULL OR
+            cached_relationship_status IN ('active', 'pending')
+          ),
+          last_seen_at TEXT NOT NULL,
+          PRIMARY KEY (viewer_uid, review_id)
+        );
+
+        CREATE INDEX IF NOT EXISTS community_cached_reviews_viewer_author_visibility_index
+          ON community_cached_reviews(viewer_uid, author_id, visibility);
+
+        CREATE INDEX IF NOT EXISTS community_cached_reviews_viewer_authorization_expiration_index
+          ON community_cached_reviews(viewer_uid, authorization_expires_at);
+
+        CREATE TABLE IF NOT EXISTS community_cached_feed_entries (
+          viewer_uid TEXT NOT NULL,
+          feed_mode TEXT NOT NULL CHECK(feed_mode IN ('following', 'everyone')),
+          review_id TEXT NOT NULL,
+          last_seen_at TEXT NOT NULL,
+          PRIMARY KEY (viewer_uid, feed_mode, review_id)
+        );
+
+        CREATE INDEX IF NOT EXISTS community_cached_feed_entries_viewer_mode_seen_index
+          ON community_cached_feed_entries(viewer_uid, feed_mode, last_seen_at DESC);
+
+        PRAGMA user_version = 12;
       `);
     }
   });

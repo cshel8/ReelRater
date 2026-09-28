@@ -1,4 +1,5 @@
 const mockGetDocs = jest.fn();
+const mockGetDocsFromServer = jest.fn();
 
 jest.mock('firebase/firestore', () => ({
   collection: jest.fn(),
@@ -6,6 +7,7 @@ jest.mock('firebase/firestore', () => ({
   documentId: jest.fn(),
   getDoc: jest.fn(),
   getDocs: (...args: unknown[]) => mockGetDocs(...args),
+  getDocsFromServer: (...args: unknown[]) => mockGetDocsFromServer(...args),
   limit: jest.fn(),
   orderBy: jest.fn(),
   query: jest.fn(),
@@ -52,5 +54,35 @@ describe('Firebase Community review deserialization', () => {
         spoilerWarning: false,
       }),
     ]);
+  });
+
+  it('uses server-only reads for the authorization-bearing Following review path', async () => {
+    mockGetDocsFromServer
+      .mockResolvedValueOnce({ docs: [] })
+      .mockResolvedValueOnce({
+        docs: [
+          {
+            id: 'followers-review',
+            data: () => ({
+              userId: 'author-1',
+              movieTitle: 'Arrival',
+              reviewText: 'Protected review.',
+              rating: 4,
+              visibility: 'followers',
+              createdAt: '2026-09-27T12:00:00.000Z',
+            }),
+          },
+        ],
+      });
+
+    await expect(
+      firebaseCommunityReviewService.listVisibleFromAuthorsFromServer(
+        'viewer-1',
+        ['author-1']
+      )
+    ).resolves.toHaveLength(1);
+
+    expect(mockGetDocsFromServer).toHaveBeenCalledTimes(2);
+    expect(mockGetDocs).not.toHaveBeenCalled();
   });
 });

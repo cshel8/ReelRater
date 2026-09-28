@@ -36,10 +36,10 @@ const compareReviews = (
   return reviewTime(right) - reviewTime(left);
 };
 
-export const applyCommunityReviewOptions = (
-  reviews: SharedReview[],
+export const applyCommunityReviewOptions = <T extends SharedReview>(
+  reviews: T[],
   options: CommunityFeedOptions = {}
-) => {
+): T[] => {
   const mediaFilter = options.mediaFilter ?? 'all';
   const sort = options.sort ?? 'newest';
   const maximumResults = Math.min(

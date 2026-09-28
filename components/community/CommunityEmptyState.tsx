@@ -6,9 +6,11 @@ export type CommunityEmptyStateKind =
   | 'error'
   | 'following-empty'
   | 'following-quiet'
+  | 'following-saved-empty'
   | 'filtered'
   | 'search'
   | 'everyone-empty'
+  | 'everyone-saved-empty'
   | 'everyone-unavailable';
 
 export function CommunityEmptyState({
@@ -38,6 +40,11 @@ export function CommunityEmptyState({
       title: 'Your Following feed is quiet',
       body: 'People you follow are not sharing any reviews that match this view yet.',
     },
+    'following-saved-empty': {
+      icon: 'cloud-offline-outline' as const,
+      title: 'No saved Following reviews',
+      body: 'Community could not be reached and there are no saved Following reviews for this view.',
+    },
     filtered: {
       icon: 'film-outline' as const,
       title: 'No reviews for this filter',
@@ -53,6 +60,11 @@ export function CommunityEmptyState({
       title: 'No public reviews yet',
       body: 'Public reviews from the ReelRater community will appear here.',
     },
+    'everyone-saved-empty': {
+      icon: 'cloud-offline-outline' as const,
+      title: 'No saved public reviews',
+      body: 'Community could not be reached and there are no saved public reviews for this view.',
+    },
     'everyone-unavailable': {
       icon: 'newspaper-outline' as const,
       title: 'Everyone is coming next',
@@ -67,7 +79,7 @@ export function CommunityEmptyState({
       </View>
       <Text style={styles.title}>{content.title}</Text>
       <Text style={styles.body}>{content.body}</Text>
-      {kind === 'error' ? (
+      {kind === 'error' || kind === 'everyone-saved-empty' || kind === 'following-saved-empty' ? (
         <Pressable accessibilityRole="button" onPress={onRetry} style={styles.outlineButton}>
           <Text style={styles.outlineButtonText}>Try Again</Text>
         </Pressable>

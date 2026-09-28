@@ -22,7 +22,8 @@ import type {
 export interface AuthService {
   signUp(email: string, password: string): Promise<AuthUser>;
   signIn(email: string, password: string): Promise<AuthUser>;
-  signOut(): Promise<void>;
+  /** The optional ID lets local viewer-scoped state be cleared on sign-out. */
+  signOut(userId?: string): Promise<void>;
   getAccessToken(): Promise<string | null>;
   observeAuthState(
     callback: (user: AuthUser | null) => void
@@ -142,6 +143,20 @@ export interface CommunityFeedService {
   ): Promise<CommunityFeedResult>;
 }
 
+export type CachedFollowingCommunityFeedResult = CommunityFeedResult & {
+  source: 'remote' | 'cache';
+  /** Present only when initial authoritative Following loading failed. */
+  remoteError: string | null;
+};
+
+/** Community-facing Following source that coordinates remote and local data. */
+export interface CachedFollowingCommunityFeedService {
+  list(
+    viewerId: string,
+    options?: CommunityFeedOptions
+  ): Promise<CachedFollowingCommunityFeedResult>;
+}
+
 export type PublicReviewPageCursor = { values: unknown[] };
 export type PublicReviewPage = {
   reviews: SharedReview[];
@@ -166,6 +181,31 @@ export interface EveryoneCommunityFeedService {
       cursor?: PublicReviewPageCursor | null;
     }
   ): Promise<Omit<PublicReviewPage, 'reviews'> & { reviews: CommunityReview[] }>;
+}
+
+export type CachedEveryoneCommunityPage = Omit<
+  PublicReviewPage,
+  'reviews'
+> & {
+  reviews: CommunityReview[];
+  source: 'remote' | 'cache';
+  /** Present only when initial remote loading failed. */
+  remoteError: string | null;
+};
+
+/**
+ * Community-facing Everyone source. It may combine a remote provider and a
+ * local cache without exposing either implementation to presentation code.
+ */
+export interface CachedEveryoneCommunityFeedService {
+  listPage(
+    viewerId: string,
+    options: {
+      mediaFilter: CommunityReviewMediaFilter;
+      sort: CommunityReviewSort;
+      cursor?: PublicReviewPageCursor | null;
+    }
+  ): Promise<CachedEveryoneCommunityPage>;
 }
 
 export interface PublicProfileReviewResult {
@@ -205,6 +245,12 @@ export interface RemoteCommunityReviewService {
     authorIds: string[],
     options?: CommunityFeedOptions
   ): Promise<SharedReview[]>;
+  /** Server-authoritative reads for the authorization-bearing Following feed. */
+  listVisibleFromAuthorsFromServer(
+    viewerId: string,
+    authorIds: string[],
+    options?: CommunityFeedOptions
+  ): Promise<SharedReview[]>;
   listVisibleFromAuthorPage(
     viewerId: string,
     authorId: string,
@@ -229,6 +275,12 @@ export interface RemoteCommunityReviewService {
     reviewId: string,
     includeFollowersOnly: boolean
   ): Promise<SharedReview | null>;
+  /** Authoritative, permission-respecting single-review validation. */
+  getVisibleFromAuthorFromServer(
+    viewerId: string,
+    authorId: string,
+    reviewId: string
+  ): Promise<SharedReview | null>;
 }
 
 export interface FollowService {
@@ -239,9 +291,16 @@ export interface FollowService {
   rejectFollower(followedUserId: string, followerId: string): Promise<void>;
   listFollowers(userId: string): Promise<FollowRelationship[]>;
   listFollowing(userId: string): Promise<FollowRelationship[]>;
+  /** A cached relationship must never grant Followers Only offline access. */
+  listFollowingFromServer(userId: string): Promise<FollowRelationship[]>;
   listPendingRequests(userId: string): Promise<FollowRelationship[]>;
   isFollowing(followerId: string, followedUserId: string): Promise<boolean>;
   getStatus(
+    followerId: string,
+    followedUserId: string
+  ): Promise<FollowRelationship['status'] | null>;
+  /** Server-only relationship status; never uses Firestore's local cache. */
+  getStatusFromServer(
     followerId: string,
     followedUserId: string
   ): Promise<FollowRelationship['status'] | null>;

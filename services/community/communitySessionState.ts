@@ -6,6 +6,7 @@ const pendingPreferenceUpdatesByUser = new Map<
   string,
   CommunityActivePreferences
 >();
+const invalidatedFollowingAuthorsByUser = new Map<string, Set<string>>();
 let activeUserId: string | null = null;
 
 /**
@@ -21,6 +22,31 @@ export function beginCommunitySessionForUser(userId: string | null): void {
   scrollOffsetsByUser.clear();
   currentPreferencesByUser.clear();
   pendingPreferenceUpdatesByUser.clear();
+  invalidatedFollowingAuthorsByUser.clear();
+}
+
+export function isCommunitySessionActiveForUser(userId: string): boolean {
+  return activeUserId === userId;
+}
+
+/**
+ * Definitive local relationship loss must win over an otherwise valid cache
+ * authorization window, including when SQLite cleanup itself later fails.
+ */
+export function invalidateFollowingAuthorForSession(
+  userId: string,
+  authorId: string
+): void {
+  const authors = invalidatedFollowingAuthorsByUser.get(userId) ?? new Set();
+  authors.add(authorId);
+  invalidatedFollowingAuthorsByUser.set(userId, authors);
+}
+
+export function isFollowingAuthorInvalidatedForSession(
+  userId: string,
+  authorId: string
+): boolean {
+  return invalidatedFollowingAuthorsByUser.get(userId)?.has(authorId) ?? false;
 }
 
 export function getCommunityScrollOffset(userId: string): number {
