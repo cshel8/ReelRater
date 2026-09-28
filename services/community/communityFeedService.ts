@@ -13,7 +13,9 @@ export function createCommunityFeedService(
 ): CommunityFeedService {
   return {
     async list(viewerId, options = {}) {
-      const relationships = await followService.listFollowing(viewerId);
+      // A Firestore local-cache relationship must never establish protected
+      // Following-cache authorization.
+      const relationships = await followService.listFollowingFromServer(viewerId);
       const authorIds = relationships.map(
         (relationship) => relationship.followedUserId
       );
@@ -25,7 +27,7 @@ export function createCommunityFeedService(
         };
       }
 
-      const sharedReviews = await remoteReviewService.listVisibleFromAuthors(
+      const sharedReviews = await remoteReviewService.listVisibleFromAuthorsFromServer(
         viewerId,
         authorIds,
         { ...options, maximumResults: options.maximumResults ?? 20 }

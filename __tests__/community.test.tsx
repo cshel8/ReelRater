@@ -3,9 +3,9 @@ import { router } from 'expo-router';
 import { StyleSheet } from 'react-native';
 import CommunityScreen from '@/app/(tabs)/community';
 import {
-  communityFeedService,
+  cachedFollowingCommunityFeedService,
   communityPreferenceRepository,
-  everyoneCommunityFeedService,
+  cachedEveryoneCommunityFeedService,
   settingsService,
 } from '@/services';
 import {
@@ -49,10 +49,10 @@ jest.mock('@/store/userStore', () => ({
 }));
 
 jest.mock('@/services', () => ({
-  communityFeedService: {
+  cachedFollowingCommunityFeedService: {
     list: jest.fn(),
   },
-  everyoneCommunityFeedService: { listPage: jest.fn() },
+  cachedEveryoneCommunityFeedService: { listPage: jest.fn() },
   communityPreferenceRepository: {
     getForUser: jest.fn(),
     setForUser: jest.fn(),
@@ -75,7 +75,7 @@ describe('Community screen', () => {
   });
 
   it('encourages viewers who follow nobody to find people', async () => {
-    (communityFeedService.list as jest.Mock).mockResolvedValue({
+    (cachedFollowingCommunityFeedService.list as jest.Mock).mockResolvedValue({
       reviews: [],
       followsAnyone: false,
     });
@@ -88,7 +88,7 @@ describe('Community screen', () => {
   });
 
   it('distinguishes an empty feed from following nobody', async () => {
-    (communityFeedService.list as jest.Mock).mockResolvedValue({
+    (cachedFollowingCommunityFeedService.list as jest.Mock).mockResolvedValue({
       reviews: [],
       followsAnyone: true,
     });
@@ -99,7 +99,7 @@ describe('Community screen', () => {
   });
 
   it('renders a shared review with its author', async () => {
-    (communityFeedService.list as jest.Mock).mockResolvedValue({
+    (cachedFollowingCommunityFeedService.list as jest.Mock).mockResolvedValue({
       followsAnyone: true,
       reviews: [
         {
@@ -206,7 +206,7 @@ describe('Community screen', () => {
   });
 
   it('passes the selected media filter and rating sort to the feed service', async () => {
-    (communityFeedService.list as jest.Mock).mockResolvedValue({
+    (cachedFollowingCommunityFeedService.list as jest.Mock).mockResolvedValue({
       reviews: [],
       followsAnyone: true,
     });
@@ -221,7 +221,7 @@ describe('Community screen', () => {
     fireEvent.press(screen.getByText('Done'));
 
     await waitFor(() => {
-      expect(communityFeedService.list).toHaveBeenLastCalledWith('viewer-1', {
+      expect(cachedFollowingCommunityFeedService.list).toHaveBeenLastCalledWith('viewer-1', {
         mediaFilter: 'tv',
         sort: 'highest',
       });
@@ -244,7 +244,7 @@ describe('Community screen', () => {
       defaultMediaFilter: 'all',
       defaultSort: 'newest',
     });
-    (communityFeedService.list as jest.Mock).mockResolvedValue({
+    (cachedFollowingCommunityFeedService.list as jest.Mock).mockResolvedValue({
       reviews: [],
       followsAnyone: true,
     });
@@ -265,7 +265,7 @@ describe('Community screen', () => {
       defaultMediaFilter: 'all',
       defaultSort: 'newest',
     });
-    (communityFeedService.list as jest.Mock).mockResolvedValue({
+    (cachedFollowingCommunityFeedService.list as jest.Mock).mockResolvedValue({
       reviews: [],
       followsAnyone: true,
     });
@@ -290,7 +290,7 @@ describe('Community screen', () => {
       defaultMediaFilter: 'movie',
       defaultSort: 'oldest',
     });
-    (communityFeedService.list as jest.Mock).mockResolvedValue({
+    (cachedFollowingCommunityFeedService.list as jest.Mock).mockResolvedValue({
       reviews: [],
       followsAnyone: true,
     });
@@ -307,7 +307,7 @@ describe('Community screen', () => {
         'viewer-1',
         { mediaFilter: 'movie', sort: 'oldest' }
       );
-      expect(communityFeedService.list).toHaveBeenLastCalledWith('viewer-1', {
+      expect(cachedFollowingCommunityFeedService.list).toHaveBeenLastCalledWith('viewer-1', {
         mediaFilter: 'movie',
         sort: 'oldest',
       });
@@ -326,7 +326,7 @@ describe('Community screen', () => {
       defaultMediaFilter: 'movie',
       defaultSort: 'newest',
     });
-    (communityFeedService.list as jest.Mock).mockResolvedValue({
+    (cachedFollowingCommunityFeedService.list as jest.Mock).mockResolvedValue({
       reviews: [],
       followsAnyone: true,
     });
@@ -358,7 +358,7 @@ describe('Community screen', () => {
       defaultMediaFilter: 'invalid',
       defaultSort: 'invalid',
     });
-    (communityFeedService.list as jest.Mock).mockResolvedValue({
+    (cachedFollowingCommunityFeedService.list as jest.Mock).mockResolvedValue({
       reviews: [],
       followsAnyone: true,
     });
@@ -385,14 +385,14 @@ describe('Community screen', () => {
       mediaFilter: 'movie',
       sort: 'lowest',
     });
-    (communityFeedService.list as jest.Mock).mockResolvedValue({
+    (cachedFollowingCommunityFeedService.list as jest.Mock).mockResolvedValue({
       reviews: [],
       followsAnyone: true,
     });
     render(<CommunityScreen />);
 
     await waitFor(() => {
-      expect(communityFeedService.list).toHaveBeenLastCalledWith('viewer-1', {
+      expect(cachedFollowingCommunityFeedService.list).toHaveBeenLastCalledWith('viewer-1', {
         mediaFilter: 'movie',
         sort: 'lowest',
       });
@@ -406,14 +406,14 @@ describe('Community screen', () => {
       defaultMediaFilter: 'tv',
       defaultSort: 'highestRated',
     });
-    (communityFeedService.list as jest.Mock).mockResolvedValue({
+    (cachedFollowingCommunityFeedService.list as jest.Mock).mockResolvedValue({
       reviews: [],
       followsAnyone: true,
     });
     render(<CommunityScreen />);
 
     await waitFor(() => {
-      expect(communityFeedService.list).toHaveBeenLastCalledWith('viewer-1', {
+      expect(cachedFollowingCommunityFeedService.list).toHaveBeenLastCalledWith('viewer-1', {
         mediaFilter: 'tv',
         sort: 'highest',
       });
@@ -421,7 +421,7 @@ describe('Community screen', () => {
   });
 
   it('passes an on-screen search query to the feed without saving it as a preference', async () => {
-    (communityFeedService.list as jest.Mock).mockResolvedValue({
+    (cachedFollowingCommunityFeedService.list as jest.Mock).mockResolvedValue({
       reviews: [],
       followsAnyone: true,
     });
@@ -434,7 +434,7 @@ describe('Community screen', () => {
     );
 
     await waitFor(() => {
-      expect(communityFeedService.list).toHaveBeenLastCalledWith('viewer-1', {
+      expect(cachedFollowingCommunityFeedService.list).toHaveBeenLastCalledWith('viewer-1', {
         mediaFilter: 'all',
         searchQuery: 'arrival',
         sort: 'newest',
@@ -444,7 +444,7 @@ describe('Community screen', () => {
   });
 
   it('starts in Following and does not populate Everyone with Following data', async () => {
-    (communityFeedService.list as jest.Mock).mockResolvedValue({
+    (cachedFollowingCommunityFeedService.list as jest.Mock).mockResolvedValue({
       followsAnyone: true,
       reviews: [
         {
@@ -457,16 +457,16 @@ describe('Community screen', () => {
 
     expect(screen.getByText('Following')).toBeTruthy();
     expect(await screen.findByText('Arrival')).toBeTruthy();
-    (everyoneCommunityFeedService.listPage as jest.Mock).mockResolvedValue({ reviews: [], nextCursor: null });
+    (cachedEveryoneCommunityFeedService.listPage as jest.Mock).mockResolvedValue({ reviews: [], nextCursor: null, source: 'remote', remoteError: null });
     fireEvent.press(screen.getByText('Everyone'));
 
     expect(await screen.findByText('No public reviews yet')).toBeTruthy();
     expect(screen.queryByText('Arrival')).toBeNull();
-    expect(communityFeedService.list).toHaveBeenCalledTimes(1);
+    expect(cachedFollowingCommunityFeedService.list).toHaveBeenCalledTimes(1);
   });
 
   it('conceals a spoiler review until Reveal Review is pressed', async () => {
-    (communityFeedService.list as jest.Mock).mockResolvedValue({
+    (cachedFollowingCommunityFeedService.list as jest.Mock).mockResolvedValue({
       followsAnyone: true,
       reviews: [
         {
@@ -491,5 +491,71 @@ describe('Community screen', () => {
         screen.getByLabelText('Poster placeholder for The Last Of Us').props.style
       ).height
     ).toBe(166);
+  });
+
+  it('shows an offline saved indicator and disables remote-only controls for cached Everyone results', async () => {
+    (cachedFollowingCommunityFeedService.list as jest.Mock).mockResolvedValue({
+      followsAnyone: true,
+      reviews: [],
+    });
+    (cachedEveryoneCommunityFeedService.listPage as jest.Mock).mockResolvedValue({
+      reviews: [{
+        id: 'saved-review', authorId: 'author-1',
+        author: { id: 'author-1', displayName: 'Alex', handle: 'AlexMovies', handleNormalized: 'alexmovies', profileImage: null, accountPrivacy: 'public' },
+        movieTitle: 'Saved Arrival', reviewText: 'Saved locally.', rating: 4,
+        spoilerWarning: false, visibility: 'public', createdAt: '2026-09-27T12:00:00.000Z', syncStatus: 'synced',
+      }],
+      // The service never returns a cache cursor; this confirms the screen
+      // still suppresses Load More if an invalid adapter ever did.
+      nextCursor: { values: ['not-a-cache-cursor'] }, source: 'cache', remoteError: 'Network unavailable',
+    });
+    const screen = render(<CommunityScreen />);
+    await screen.findByText('Your Following feed is quiet');
+    fireEvent.press(screen.getByText('Everyone'));
+
+    expect(await screen.findByText('Offline · Showing saved reviews')).toBeTruthy();
+    expect(screen.getByText('Saved Arrival')).toBeTruthy();
+    expect(screen.queryByLabelText('Load more public reviews')).toBeNull();
+    expect(screen.queryByLabelText('Follow Alex')).toBeNull();
+  });
+
+  it('uses the Everyone-specific saved-content empty state after remote failure with no eligible cache', async () => {
+    (cachedFollowingCommunityFeedService.list as jest.Mock).mockResolvedValue({ followsAnyone: true, reviews: [] });
+    (cachedEveryoneCommunityFeedService.listPage as jest.Mock).mockResolvedValue({
+      reviews: [], nextCursor: null, source: 'cache', remoteError: 'Network unavailable',
+    });
+    const screen = render(<CommunityScreen />);
+    await screen.findByText('Your Following feed is quiet');
+    fireEvent.press(screen.getByText('Everyone'));
+
+    expect(await screen.findByText('No saved public reviews')).toBeTruthy();
+    expect(screen.queryByText('Offline · Showing saved reviews')).toBeNull();
+  });
+
+  it('shows saved Following reviews with the offline indicator after authoritative failure', async () => {
+    (cachedFollowingCommunityFeedService.list as jest.Mock).mockResolvedValue({
+      followsAnyone: true,
+      reviews: [{
+        id: 'saved-following-review', authorId: 'author-1',
+        author: { id: 'author-1', displayName: 'Alex', handle: 'AlexMovies', handleNormalized: 'alexmovies', profileImage: null, accountPrivacy: 'public' },
+        movieTitle: 'Saved Following Review', reviewText: 'Saved locally.', rating: 4,
+        spoilerWarning: false, visibility: 'followers', createdAt: '2026-09-27T12:00:00.000Z', syncStatus: 'synced',
+      }],
+      source: 'cache', remoteError: 'Network unavailable',
+    });
+    const screen = render(<CommunityScreen />);
+
+    expect(await screen.findByText('Saved Following Review')).toBeTruthy();
+    expect(screen.getByText('Offline · Showing saved reviews')).toBeTruthy();
+  });
+
+  it('uses the Following-specific saved-content empty state after failure with no eligible cache', async () => {
+    (cachedFollowingCommunityFeedService.list as jest.Mock).mockResolvedValue({
+      followsAnyone: false, reviews: [], source: 'cache', remoteError: 'Network unavailable',
+    });
+    const screen = render(<CommunityScreen />);
+
+    expect(await screen.findByText('No saved Following reviews')).toBeTruthy();
+    expect(screen.queryByText('Offline · Showing saved reviews')).toBeNull();
   });
 });

@@ -8,15 +8,18 @@ import type {
 function createServices() {
   const followService = {
     listFollowing: jest.fn(),
+    listFollowingFromServer: jest.fn(),
   } as unknown as jest.Mocked<FollowService>;
   const directoryService = {
     getById: jest.fn(),
   } as unknown as jest.Mocked<UserDirectoryService>;
   const reviewService = {
     listVisibleFromAuthors: jest.fn(),
+    listVisibleFromAuthorsFromServer: jest.fn(),
     listVisibleFromAuthor: jest.fn(),
     listVisibleFromAuthorPage: jest.fn(),
     getVisibleFromAuthor: jest.fn(),
+    getVisibleFromAuthorFromServer: jest.fn(),
   } as jest.Mocked<RemoteCommunityReviewService>;
 
   return { followService, directoryService, reviewService };
@@ -25,7 +28,7 @@ function createServices() {
 describe('Community feed service', () => {
   it('does not query reviews when the viewer follows nobody', async () => {
     const services = createServices();
-    services.followService.listFollowing.mockResolvedValue([]);
+    services.followService.listFollowingFromServer.mockResolvedValue([]);
     const communityService = createCommunityFeedService(
       services.followService,
       services.directoryService,
@@ -36,12 +39,14 @@ describe('Community feed service', () => {
       reviews: [],
       followsAnyone: false,
     });
-    expect(services.reviewService.listVisibleFromAuthors).not.toHaveBeenCalled();
+    expect(
+      services.reviewService.listVisibleFromAuthorsFromServer
+    ).not.toHaveBeenCalled();
   });
 
   it('attaches public author data to shared reviews', async () => {
     const services = createServices();
-    services.followService.listFollowing.mockResolvedValue([
+    services.followService.listFollowingFromServer.mockResolvedValue([
       {
         followerId: 'viewer-1',
         followedUserId: 'author-1',
@@ -50,7 +55,7 @@ describe('Community feed service', () => {
         acceptedAt: '2026-07-19T12:00:00.000Z',
       },
     ]);
-    services.reviewService.listVisibleFromAuthors.mockResolvedValue([
+    services.reviewService.listVisibleFromAuthorsFromServer.mockResolvedValue([
       {
         id: 'review-1',
         authorId: 'author-1',
@@ -85,7 +90,9 @@ describe('Community feed service', () => {
       sort: 'highest',
     });
 
-    expect(services.reviewService.listVisibleFromAuthors).toHaveBeenCalledWith(
+    expect(
+      services.reviewService.listVisibleFromAuthorsFromServer
+    ).toHaveBeenCalledWith(
       'viewer-1',
       ['author-1'],
       {

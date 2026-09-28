@@ -102,7 +102,7 @@ export default function Profile() {
     const handleSignOut = async () => {
         setSigningOut(true);
         try {
-            await authService.signOut();
+            await authService.signOut(userId ?? undefined);
             setUserId(null);
             setDisplayName('');
             setHandle('');

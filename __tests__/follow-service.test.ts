@@ -1,6 +1,8 @@
 import {
   deleteDoc,
   getDoc,
+  getDocs,
+  getDocsFromServer,
   runTransaction,
   serverTimestamp,
 } from 'firebase/firestore';
@@ -26,6 +28,7 @@ jest.mock('firebase/firestore', () => ({
   })),
   getDoc: jest.fn(),
   getDocs: jest.fn(),
+  getDocsFromServer: jest.fn(),
   query: jest.fn((...constraints: unknown[]) => ({ constraints })),
   runTransaction: jest.fn(async (_database, callback) =>
     callback({
@@ -152,5 +155,34 @@ describe('Firebase follow service', () => {
     expect(deleteDoc).toHaveBeenCalledWith({
       path: 'followRelationships/alex-id/followers/connor-id',
     });
+  });
+
+  it('uses a server-only query for Following authorization', async () => {
+    (getDocsFromServer as jest.Mock).mockResolvedValue({
+      docs: [
+        {
+          data: () => ({
+            followerId: 'connor-id',
+            followedUserId: 'alex-id',
+            status: 'active',
+            createdAt: '2026-09-27T12:00:00.000Z',
+            acceptedAt: '2026-09-27T12:00:00.000Z',
+          }),
+        },
+      ],
+    });
+
+    await expect(
+      firebaseFollowService.listFollowingFromServer('connor-id')
+    ).resolves.toEqual([
+      expect.objectContaining({
+        followerId: 'connor-id',
+        followedUserId: 'alex-id',
+        status: 'active',
+      }),
+    ]);
+
+    expect(getDocsFromServer).toHaveBeenCalledTimes(1);
+    expect(getDocs).not.toHaveBeenCalled();
   });
 });

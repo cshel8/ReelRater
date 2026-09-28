@@ -10,9 +10,11 @@ function createServices() {
   } as unknown as jest.Mocked<FollowService>;
   const reviewService = {
     listVisibleFromAuthors: jest.fn(),
+    listVisibleFromAuthorsFromServer: jest.fn(),
     listVisibleFromAuthor: jest.fn(),
     listVisibleFromAuthorPage: jest.fn(),
     getVisibleFromAuthor: jest.fn(),
+    getVisibleFromAuthorFromServer: jest.fn(),
   } as jest.Mocked<RemoteCommunityReviewService>;
 
   return { followService, reviewService };

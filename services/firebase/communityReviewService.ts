@@ -3,7 +3,9 @@ import {
   doc,
   documentId,
   getDoc,
+  getDocFromServer,
   getDocs,
+  getDocsFromServer,
   limit,
   orderBy,
   query,
@@ -93,16 +95,18 @@ function readSharedReview(
 
 const queryAuthorReviews = async (
   authorId: string,
-  visibility: Exclude<ReviewVisibility, 'private'>
+  visibility: Exclude<ReviewVisibility, 'private'>,
+  readFromServer = false
 ) => {
   try {
-    return await getDocs(
-      query(
-        collection(db, 'reviews'),
-        where('userId', '==', authorId),
-        where('visibility', '==', visibility)
-      )
+    const reviewsQuery = query(
+      collection(db, 'reviews'),
+      where('userId', '==', authorId),
+      where('visibility', '==', visibility)
     );
+    return readFromServer
+      ? await getDocsFromServer(reviewsQuery)
+      : await getDocs(reviewsQuery);
   } catch (error) {
     const code =
       error && typeof error === 'object' && 'code' in error
@@ -144,6 +148,22 @@ export const firebaseCommunityReviewService: RemoteCommunityReviewService = {
       [...new Set(authorIds)].flatMap((authorId) =>
         (['public', 'followers'] as const).map((visibility) =>
           queryAuthorReviews(authorId, visibility)
+        )
+      )
+    );
+
+    return applyCommunityReviewOptions(readSharedReviews(snapshots), options);
+  },
+
+  async listVisibleFromAuthorsFromServer(_viewerId, authorIds, options = {}) {
+    if (authorIds.length === 0) {
+      return [];
+    }
+
+    const snapshots = await Promise.all(
+      [...new Set(authorIds)].flatMap((authorId) =>
+        (['public', 'followers'] as const).map((visibility) =>
+          queryAuthorReviews(authorId, visibility, true)
         )
       )
     );
@@ -246,6 +266,26 @@ export const firebaseCommunityReviewService: RemoteCommunityReviewService = {
         error && typeof error === 'object' && 'code' in error
           ? String(error.code)
           : 'unknown';
+      if (code === 'permission-denied' || code === 'firestore/permission-denied') {
+        return null;
+      }
+      throw error;
+    }
+  },
+
+  async getVisibleFromAuthorFromServer(_viewerId, authorId, reviewId) {
+    try {
+      const snapshot = await getDocFromServer(doc(db, 'reviews', reviewId));
+      if (!snapshot.exists()) {
+        return null;
+      }
+      const review = readSharedReview(snapshot.id, snapshot.data());
+      return review && review.authorId === authorId ? review : null;
+    } catch (error) {
+      const code =
+        error && typeof error === 'object' && 'code' in error
+          ? String(error.code)
+          : '';
       if (code === 'permission-denied' || code === 'firestore/permission-denied') {
         return null;
       }

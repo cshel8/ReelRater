@@ -79,7 +79,7 @@ export default function CompleteProfile() {
 
   const signOut = async () => {
     try {
-      await authService.signOut();
+      await authService.signOut(userId ?? undefined);
       setUserId(null);
       setDisplayName('');
       setHandle('');
