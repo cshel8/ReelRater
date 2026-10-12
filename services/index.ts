@@ -10,6 +10,7 @@ import { createCommunityCacheLifecycleService } from '@/services/community/commu
 import { createCommunityReconnectReconciliationService } from '@/services/community/communityReconnectReconciliationService';
 import { createCachedFollowingCommunityFeedService } from '@/services/community/cachedFollowingCommunityFeedService';
 import { createEveryoneCommunityFeedService } from '@/services/community/everyoneCommunityFeedService';
+import { createExactMediaCommunitySearchService } from '@/services/community/exactMediaCommunitySearchService';
 import { createCachedEveryoneCommunityFeedService } from '@/services/community/cachedEveryoneCommunityFeedService';
 import { createPublicProfileReviewService } from '@/services/community/publicProfileReviewService';
 import { firebaseCommunityReviewService } from '@/services/firebase/communityReviewService';
@@ -57,6 +58,13 @@ export const everyoneCommunityFeedService = createEveryoneCommunityFeedService(
   firebasePublicReviewRepository,
   firebaseUserDirectoryService
 );
+
+/** Online-only exact catalog-media retrieval for Community title selection. */
+export const exactMediaCommunitySearchService =
+  createExactMediaCommunitySearchService(
+    communityFeedService,
+    everyoneCommunityFeedService
+  );
 
 export const communityPreferenceRepository =
   asyncStorageCommunityPreferenceRepository;

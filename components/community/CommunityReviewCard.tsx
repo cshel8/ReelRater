@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { ReviewPoster } from '@/components/reviews/ReviewPoster';
 import { ReviewStars } from '@/components/reviews/ReviewStars';
@@ -38,8 +38,21 @@ function formatRelativeTime(value: string): string | null {
   return days < 7 ? `${days}d ago` : null;
 }
 
-export function CommunityReviewCard({ review, onFollow }: { review: CommunityReview; onFollow?: (review: CommunityReview) => void }) {
+export function CommunityReviewCard({
+  review,
+  onFollow,
+  onOpenReview,
+  spoilerResetToken = 0,
+}: {
+  review: CommunityReview;
+  onFollow?: (review: CommunityReview) => void;
+  onOpenReview?: (review: CommunityReview) => void;
+  spoilerResetToken?: number;
+}) {
   const [isSpoilerRevealed, setIsSpoilerRevealed] = useState(false);
+  useEffect(() => {
+    setIsSpoilerRevealed(false);
+  }, [spoilerResetToken]);
   const displayMovieTitle = getDisplayReviewMovieTitle(review);
   const movieMetadata = getDisplayReviewMovieMetadata(review);
   const relativeTime = formatRelativeTime(review.createdAt);
@@ -72,7 +85,13 @@ export function CommunityReviewCard({ review, onFollow }: { review: CommunityRev
         accessibilityHint="Opens the complete read-only review"
         accessibilityLabel={`Read review of ${displayMovieTitle}`}
         accessibilityRole="button"
-        onPress={() => router.push({ pathname: '/community/review/[reviewId]', params: { authorId: review.authorId, reviewId: review.id } })}
+        onPress={() => {
+          if (onOpenReview) {
+            onOpenReview(review);
+            return;
+          }
+          router.push({ pathname: '/community/review/[reviewId]', params: { authorId: review.authorId, reviewId: review.id } });
+        }}
         style={({ pressed }) => [styles.reviewRow, pressed && styles.pressed]}
       >
         <ReviewPoster
@@ -91,6 +110,7 @@ export function CommunityReviewCard({ review, onFollow }: { review: CommunityRev
             numberOfLines={4}
             onReveal={() => setIsSpoilerRevealed(true)}
             presentation="community"
+            resetToken={spoilerResetToken}
             reviewText={review.reviewText}
             spoilerWarning={review.spoilerWarning}
             textStyle={styles.reviewText}

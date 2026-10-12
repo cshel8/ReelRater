@@ -1,18 +1,84 @@
-import { fireEvent, render, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import { router } from 'expo-router';
-import { StyleSheet } from 'react-native';
+import { FlatList, InteractionManager, Keyboard, StyleSheet } from 'react-native';
 import CommunityScreen from '@/app/(tabs)/community';
 import {
   cachedFollowingCommunityFeedService,
   communityPreferenceRepository,
   cachedEveryoneCommunityFeedService,
+  exactMediaCommunitySearchService,
   settingsService,
+  mediaCatalogService,
 } from '@/services';
 import {
   beginCommunitySessionForUser,
   getCommunityScrollOffset,
+  invalidateFollowingAuthorForSession,
   setCommunityScrollOffset,
 } from '@/services/community/communitySessionState';
+
+const mockParentTabListeners = new Map<string, Set<() => void>>();
+const mockCommunityFocusEffects = new Set<{
+  callback: () => void | (() => void);
+  cleanup?: () => void;
+}>();
+const mockParentTabNavigation = {
+  addListener: jest.fn((event: string, listener: () => void) => {
+    const listeners = mockParentTabListeners.get(event) ?? new Set<() => void>();
+    listeners.add(listener);
+    mockParentTabListeners.set(event, listeners);
+    return () => listeners.delete(listener);
+  }),
+};
+const mockCommunityNavigation = {
+  getParent: () => mockParentTabNavigation,
+};
+
+function emitParentTabEvent(event: string) {
+  for (const listener of mockParentTabListeners.get(event) ?? []) {
+    listener();
+  }
+}
+
+function blurCommunityScreen() {
+  for (const effect of mockCommunityFocusEffects) {
+    effect.cleanup?.();
+  }
+}
+
+function focusCommunityScreen() {
+  for (const effect of mockCommunityFocusEffects) {
+    const cleanup = effect.callback();
+    effect.cleanup = typeof cleanup === 'function' ? cleanup : undefined;
+  }
+}
+
+function communityReview(
+  id: string,
+  movieTitle: string,
+  authorId = `author-${id}`,
+  visibility: 'public' | 'followers' = 'public'
+) {
+  return {
+    id,
+    authorId,
+    author: {
+      id: authorId,
+      displayName: authorId,
+      handle: authorId,
+      handleNormalized: authorId,
+      profileImage: null,
+      accountPrivacy: 'public' as const,
+    },
+    movieTitle,
+    reviewText: `${movieTitle} review text.`,
+    rating: 4,
+    spoilerWarning: false,
+    visibility,
+    createdAt: '2026-10-10T12:00:00.000Z',
+    syncStatus: 'synced' as const,
+  };
+}
 
 jest.mock('@expo/vector-icons', () => ({
   Ionicons: ({ name }: { name: string }) => {
@@ -37,15 +103,29 @@ jest.mock('expo-router', () => ({
       </>
     ),
   },
-  useFocusEffect: (callback: () => void) => {
+  useFocusEffect: (callback: () => void | (() => void)) => {
     const React = require('react');
-    React.useEffect(callback, [callback]);
+    React.useEffect(() => {
+      const effect = {
+        callback,
+        cleanup: undefined as (() => void) | undefined,
+      };
+      const cleanup = callback();
+      effect.cleanup = typeof cleanup === 'function' ? cleanup : undefined;
+      mockCommunityFocusEffects.add(effect);
+      return () => {
+        effect.cleanup?.();
+        mockCommunityFocusEffects.delete(effect);
+      };
+    }, [callback]);
   },
+  useNavigation: () => mockCommunityNavigation,
 }));
 
+let mockUserId: string | null = 'viewer-1';
 jest.mock('@/store/userStore', () => ({
-  userStore: (selector: (state: { userId: string }) => unknown) =>
-    selector({ userId: 'viewer-1' }),
+  userStore: (selector: (state: { userId: string | null }) => unknown) =>
+    selector({ userId: mockUserId }),
 }));
 
 jest.mock('@/services', () => ({
@@ -53,6 +133,7 @@ jest.mock('@/services', () => ({
     list: jest.fn(),
   },
   cachedEveryoneCommunityFeedService: { listPage: jest.fn() },
+  exactMediaCommunitySearchService: { search: jest.fn() },
   communityPreferenceRepository: {
     getForUser: jest.fn(),
     setForUser: jest.fn(),
@@ -60,11 +141,19 @@ jest.mock('@/services', () => ({
   settingsService: {
     get: jest.fn(),
   },
+  mediaCatalogService: {
+    search: jest.fn(),
+  },
 }));
 
 describe('Community screen', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockUserId = 'viewer-1';
+    mockParentTabListeners.clear();
+    mockCommunityFocusEffects.clear();
+    beginCommunitySessionForUser(null);
+    beginCommunitySessionForUser('viewer-1');
     (communityPreferenceRepository.getForUser as jest.Mock).mockResolvedValue(
       null
     );
@@ -72,6 +161,14 @@ describe('Community screen', () => {
       undefined
     );
     (settingsService.get as jest.Mock).mockResolvedValue(null);
+    (mediaCatalogService.search as jest.Mock).mockResolvedValue({
+      items: [],
+      nextCursor: null,
+    });
+    (exactMediaCommunitySearchService.search as jest.Mock).mockResolvedValue({
+      reviews: [],
+      pagination: { retrieval: 'bounded', nextCursor: null },
+    });
   });
 
   it('encourages viewers who follow nobody to find people', async () => {
@@ -91,6 +188,8 @@ describe('Community screen', () => {
     (cachedFollowingCommunityFeedService.list as jest.Mock).mockResolvedValue({
       reviews: [],
       followsAnyone: true,
+      source: 'remote',
+      remoteError: null,
     });
     const screen = render(<CommunityScreen />);
 
@@ -443,6 +542,858 @@ describe('Community screen', () => {
     expect(communityPreferenceRepository.setForUser).not.toHaveBeenCalled();
   });
 
+  it('merges debounced movie and TV catalog suggestions without changing the feed query', async () => {
+    (cachedFollowingCommunityFeedService.list as jest.Mock).mockResolvedValue({
+      reviews: [],
+      followsAnyone: true,
+    });
+    (mediaCatalogService.search as jest.Mock).mockImplementation(
+      (_query, options) =>
+        Promise.resolve({
+          items:
+            options?.mediaType === 'movie'
+              ? [{
+                  catalogId: 'tmdb:movie:123', mediaType: 'movie',
+                  reviewTargetType: 'movie', title: 'Wednesday', releaseYear: 2008,
+                  genres: [], posterUrl: null,
+                }]
+              : [{
+                  catalogId: 'tmdb:tv:119051', mediaType: 'tv',
+                  reviewTargetType: 'series', title: 'Wednesday', releaseYear: 2022,
+                  genres: [], posterUrl: null,
+                }],
+          nextCursor: null,
+        })
+    );
+    const screen = render(<CommunityScreen />);
+
+    await screen.findByText('Your Following feed is quiet');
+    fireEvent.changeText(
+      screen.getByLabelText('Search community reviews'),
+      'wednesday'
+    );
+    expect(mediaCatalogService.search).not.toHaveBeenCalled();
+
+    await waitFor(() => {
+      expect(mediaCatalogService.search).toHaveBeenCalledWith('wednesday', {
+        maximumResults: 8,
+        mediaType: 'movie',
+      });
+      expect(mediaCatalogService.search).toHaveBeenCalledWith('wednesday', {
+        maximumResults: 8,
+        mediaType: 'tv',
+      });
+    });
+    expect(screen.getByText('Following')).toBeTruthy();
+    expect(screen.getByText('Everyone')).toBeTruthy();
+    expect(screen.getByText('Movies & TV')).toBeTruthy();
+    expect(screen.getAllByText('Wednesday')).toHaveLength(2);
+    expect(screen.getByText('Movie · 2008')).toBeTruthy();
+    expect(screen.getByText('TV series · 2022')).toBeTruthy();
+    expect(screen.getByText('Review Text Matches')).toBeTruthy();
+    expect(cachedFollowingCommunityFeedService.list).toHaveBeenLastCalledWith(
+      'viewer-1',
+      { mediaFilter: 'all', searchQuery: 'wednesday', sort: 'newest' }
+    );
+  });
+
+  it('groups catalog suggestions and expands Movies and TV Shows independently', async () => {
+    (cachedFollowingCommunityFeedService.list as jest.Mock).mockResolvedValue({
+      reviews: [],
+      followsAnyone: true,
+    });
+    (mediaCatalogService.search as jest.Mock).mockImplementation(
+      (_query, options) =>
+        Promise.resolve({
+          items: Array.from({ length: 4 }, (_, index) => ({
+            catalogId: `tmdb:${options?.mediaType}:${index + 1}`,
+            mediaType: options?.mediaType,
+            reviewTargetType:
+              options?.mediaType === 'tv' ? 'series' : 'movie',
+            title: `${options?.mediaType === 'tv' ? 'Series' : 'Movie'} ${index + 1}`,
+            releaseYear: null,
+            genres: [],
+            posterUrl: null,
+          })),
+          nextCursor: null,
+        })
+    );
+    const screen = render(<CommunityScreen />);
+
+    await screen.findByText('Your Following feed is quiet');
+    fireEvent.changeText(
+      screen.getByLabelText('Search community reviews'),
+      'title'
+    );
+
+    expect(await screen.findByText('Movies')).toBeTruthy();
+    expect(screen.getByText('TV Shows')).toBeTruthy();
+    expect(screen.getByText('Movie 3')).toBeTruthy();
+    expect(screen.queryByText('Movie 4')).toBeNull();
+    expect(screen.getByText('Series 3')).toBeTruthy();
+    expect(screen.queryByText('Series 4')).toBeNull();
+
+    fireEvent.press(screen.getByLabelText('See more Movies'));
+    expect(await screen.findByText('Movie 4')).toBeTruthy();
+    expect(screen.queryByText('Series 4')).toBeNull();
+    expect(screen.getByLabelText('Show less Movies')).toBeTruthy();
+
+    fireEvent.press(screen.getByLabelText('See more TV Shows'));
+    expect(await screen.findByText('Series 4')).toBeTruthy();
+  });
+
+  it('omits a Review Text Matches section in Everyone without fabricating global results', async () => {
+    (cachedFollowingCommunityFeedService.list as jest.Mock).mockResolvedValue({
+      reviews: [],
+      followsAnyone: true,
+    });
+    (cachedEveryoneCommunityFeedService.listPage as jest.Mock).mockResolvedValue({
+      reviews: [],
+      nextCursor: null,
+      source: 'remote',
+      remoteError: null,
+    });
+    (mediaCatalogService.search as jest.Mock).mockResolvedValue({
+      items: [],
+      nextCursor: null,
+    });
+    const screen = render(<CommunityScreen />);
+
+    await screen.findByText('Your Following feed is quiet');
+    fireEvent.press(screen.getByText('Everyone'));
+    await screen.findByText('No public reviews yet');
+    fireEvent.changeText(
+      screen.getByLabelText('Search community reviews'),
+      'arrival'
+    );
+
+    await screen.findByText('No movies or TV series found.');
+    expect(screen.queryByText('Review Text Matches')).toBeNull();
+    expect(
+      screen.queryByText('Review-text matches are not available in Everyone yet.')
+    ).toBeNull();
+  });
+
+  it('ignores stale catalog responses and does not search blank input', async () => {
+    (cachedFollowingCommunityFeedService.list as jest.Mock).mockResolvedValue({
+      reviews: [],
+      followsAnyone: true,
+    });
+    const oldResolvers: Array<(value: unknown) => void> = [];
+    const newResolvers: Array<(value: unknown) => void> = [];
+    (mediaCatalogService.search as jest.Mock).mockImplementation(
+      (query) =>
+        new Promise((resolve) => {
+          (query === 'old' ? oldResolvers : newResolvers).push(resolve);
+        })
+    );
+    const screen = render(<CommunityScreen />);
+
+    await screen.findByText('Your Following feed is quiet');
+    fireEvent.changeText(screen.getByLabelText('Search community reviews'), 'old');
+    await waitFor(() => expect(mediaCatalogService.search).toHaveBeenCalledTimes(2));
+    expect(screen.getByLabelText('Loading movie and TV suggestions')).toBeTruthy();
+    fireEvent.changeText(screen.getByLabelText('Search community reviews'), 'new');
+    await waitFor(() => expect(mediaCatalogService.search).toHaveBeenCalledTimes(4));
+    newResolvers.forEach((resolve, index) => resolve({
+      items: index === 1 ? [{
+        catalogId: 'tmdb:tv:2', mediaType: 'tv', reviewTargetType: 'series',
+        title: 'New Result', releaseYear: null, genres: [], posterUrl: null,
+      }] : [], nextCursor: null,
+    }));
+    expect(await screen.findByText('New Result')).toBeTruthy();
+    oldResolvers.forEach((resolve, index) => resolve({
+      items: index === 0 ? [{
+        catalogId: 'tmdb:movie:1', mediaType: 'movie', reviewTargetType: 'movie',
+        title: 'Old Result', releaseYear: null, genres: [], posterUrl: null,
+      }] : [], nextCursor: null,
+    }));
+    await waitFor(() => expect(screen.queryByText('Old Result')).toBeNull());
+
+    fireEvent.changeText(screen.getByLabelText('Search community reviews'), '   ');
+    await waitFor(() => expect(screen.queryByText('Movies & TV')).toBeNull());
+    expect(mediaCatalogService.search).toHaveBeenCalledTimes(4);
+  });
+
+  it('retrieves selected catalog media and preserves its identity across Community scopes', async () => {
+    (cachedFollowingCommunityFeedService.list as jest.Mock).mockResolvedValue({
+      reviews: [],
+      followsAnyone: true,
+    });
+    (cachedEveryoneCommunityFeedService.listPage as jest.Mock).mockResolvedValue({
+      reviews: [], nextCursor: null, source: 'remote', remoteError: null,
+    });
+    (mediaCatalogService.search as jest.Mock).mockImplementation(
+      (_query, options) => Promise.resolve({
+        items: options?.mediaType === 'tv' ? [{
+          catalogId: 'tmdb:tv:61709', mediaType: 'tv', reviewTargetType: 'series',
+          title: 'Dragon Ball Z Kai', releaseYear: 2009, genres: [], posterUrl: null,
+        }] : [], nextCursor: null,
+      })
+    );
+    const screen = render(<CommunityScreen />);
+
+    await screen.findByText('Your Following feed is quiet');
+    fireEvent.changeText(screen.getByLabelText('Search community reviews'), 'dragon');
+    expect(await screen.findByLabelText('Select Dragon Ball Z Kai')).toBeTruthy();
+    const feedCallsBeforeSelection = (cachedFollowingCommunityFeedService.list as jest.Mock).mock.calls.length;
+    fireEvent.press(screen.getByLabelText('Select Dragon Ball Z Kai'));
+
+    expect(await screen.findByText('Reviews for Dragon Ball Z Kai')).toBeTruthy();
+    await waitFor(() => {
+      expect(exactMediaCommunitySearchService.search).toHaveBeenCalledWith(
+        'viewer-1',
+        expect.objectContaining({
+          scope: 'following',
+          selectedMedia: {
+            catalogId: 'tmdb:tv:61709',
+            mediaType: 'tv',
+            reviewTargetType: 'series',
+          },
+          sort: 'newest',
+        })
+      );
+    });
+    expect(cachedFollowingCommunityFeedService.list).toHaveBeenCalledTimes(feedCallsBeforeSelection);
+    fireEvent.press(screen.getByText('Everyone'));
+    expect(screen.getByDisplayValue('dragon')).toBeTruthy();
+    expect(screen.getByText('Reviews for Dragon Ball Z Kai')).toBeTruthy();
+    await waitFor(() => {
+      expect(exactMediaCommunitySearchService.search).toHaveBeenLastCalledWith(
+        'viewer-1',
+        expect.objectContaining({ scope: 'everyone' })
+      );
+    });
+    fireEvent.press(screen.getByLabelText('Clear selected media'));
+    expect(screen.queryByText('Reviews for Dragon Ball Z Kai')).toBeNull();
+    expect(screen.getByDisplayValue('')).toBeTruthy();
+    expect(await screen.findByText('No public reviews yet')).toBeTruthy();
+  });
+
+  it('clears only transient Community state when its parent tab loses focus', async () => {
+    (cachedFollowingCommunityFeedService.list as jest.Mock).mockResolvedValue({
+      reviews: [],
+      followsAnyone: true,
+      source: 'remote',
+      remoteError: null,
+    });
+    (mediaCatalogService.search as jest.Mock).mockImplementation(
+      (_query, options) =>
+        Promise.resolve({
+          items:
+            options?.mediaType === 'movie'
+              ? [{
+                  catalogId: 'tmdb:movie:1', mediaType: 'movie',
+                  reviewTargetType: 'movie', title: 'Arrival', releaseYear: 2016,
+                  genres: [], posterUrl: null,
+                }]
+              : [],
+          nextCursor: null,
+        })
+    );
+    const screen = render(<CommunityScreen />);
+
+    await screen.findByText('Your Following feed is quiet');
+    fireEvent.changeText(
+      screen.getByLabelText('Search community reviews'),
+      'arrival'
+    );
+    fireEvent.press(await screen.findByLabelText('Select Arrival'));
+    expect(await screen.findByText('Reviews for Arrival')).toBeTruthy();
+
+    const list = screen.UNSAFE_getByType(FlatList);
+    act(() => {
+      list.props.onContentSizeChange(390, 1600);
+      list.props.onScroll({ nativeEvent: { contentOffset: { y: 340 } } });
+    });
+
+    act(() => emitParentTabEvent('blur'));
+
+    await waitFor(() => {
+      expect(screen.getByDisplayValue('')).toBeTruthy();
+      expect(screen.queryByText('Reviews for Arrival')).toBeNull();
+    });
+    expect(screen.getByText('Following')).toBeTruthy();
+    expect(getCommunityScrollOffset('viewer-1')).toBe(0);
+
+    act(() => {
+      focusCommunityScreen();
+      screen.UNSAFE_getByType(FlatList).props.onContentSizeChange(390, 1600);
+    });
+    expect(getCommunityScrollOffset('viewer-1')).toBe(0);
+  });
+
+  it('restores the complete normal Following snapshot before its tab-return refresh resolves', async () => {
+    const initial = [
+      communityReview('wednesday', 'Wednesday', 'maya'),
+      communityReview('arrival', 'Arrival', 'alex'),
+    ];
+    const searched = [initial[0]];
+    const refreshed = [
+      communityReview('wednesday', 'Wednesday', 'maya'),
+      communityReview('dune', 'Dune', 'jamie'),
+    ];
+    let normalCalls = 0;
+    let resolveRefresh: ((value: unknown) => void) | undefined;
+    (cachedFollowingCommunityFeedService.list as jest.Mock).mockImplementation(
+      (_viewerId, options) => {
+        if (options?.searchQuery) {
+          return Promise.resolve({ reviews: searched, followsAnyone: true, source: 'remote', remoteError: null });
+        }
+        normalCalls += 1;
+        if (normalCalls === 1) {
+          return Promise.resolve({ reviews: initial, followsAnyone: true, source: 'remote', remoteError: null });
+        }
+        return new Promise((resolve) => {
+          resolveRefresh = resolve;
+        });
+      }
+    );
+    const screen = render(<CommunityScreen />);
+
+    await screen.findByText('Arrival');
+    fireEvent.changeText(screen.getByLabelText('Search community reviews'), 'Wednesday');
+    await waitFor(() => expect(cachedFollowingCommunityFeedService.list).toHaveBeenCalledWith(
+      'viewer-1',
+      expect.objectContaining({ searchQuery: 'Wednesday' })
+    ));
+    await waitFor(() => expect(screen.queryByText('Arrival')).toBeNull());
+
+    act(() => emitParentTabEvent('blur'));
+    expect(screen.getByDisplayValue('')).toBeTruthy();
+    expect(screen.getByText('Arrival')).toBeTruthy();
+    expect(screen.getByText('Wednesday')).toBeTruthy();
+
+    act(() => focusCommunityScreen());
+    expect(screen.getByText('Arrival')).toBeTruthy();
+    await waitFor(() => expect(resolveRefresh).toBeDefined());
+    await act(async () => {
+      resolveRefresh?.({ reviews: refreshed, followsAnyone: true, source: 'remote', remoteError: null });
+    });
+    expect(await screen.findByText('Dune')).toBeTruthy();
+    expect(screen.queryByText('Arrival')).toBeNull();
+  });
+
+  it('shows loading instead of stale searched reviews when no safe normal snapshot exists', async () => {
+    const saved = communityReview('saved', 'Arrival', 'alex');
+    const searched = communityReview('searched', 'Wednesday', 'maya');
+    (cachedFollowingCommunityFeedService.list as jest.Mock).mockImplementation(
+      (_viewerId, options) => Promise.resolve(
+        options?.searchQuery
+          ? { reviews: [searched], followsAnyone: true, source: 'remote', remoteError: null }
+          : { reviews: [saved], followsAnyone: true, source: 'cache', remoteError: 'offline' }
+      )
+    );
+    const screen = render(<CommunityScreen />);
+
+    await screen.findByText('Arrival');
+    fireEvent.changeText(screen.getByLabelText('Search community reviews'), 'Wednesday');
+    await screen.findByText('Wednesday');
+    act(() => emitParentTabEvent('blur'));
+
+    expect(screen.queryByText('Wednesday')).toBeNull();
+    expect(screen.getByText('Loading your community…')).toBeTruthy();
+  });
+
+  it('never carries a normal Following snapshot into a different account session', async () => {
+    const firstAccountReview = communityReview('first-account', 'Arrival', 'alex');
+    (cachedFollowingCommunityFeedService.list as jest.Mock).mockImplementation(
+      (viewerId) => viewerId === 'viewer-1'
+        ? Promise.resolve({ reviews: [firstAccountReview], followsAnyone: true, source: 'remote', remoteError: null })
+        : new Promise(() => undefined)
+    );
+    const screen = render(<CommunityScreen />);
+
+    await screen.findByText('Arrival');
+    mockUserId = 'viewer-2';
+    screen.rerender(<CommunityScreen />);
+
+    await waitFor(() => {
+      expect(screen.queryByText('Arrival')).toBeNull();
+      expect(screen.getByText('Loading your community…')).toBeTruthy();
+    });
+  });
+
+  it('filters locally invalidated authors from the restored normal Following snapshot', async () => {
+    const protectedReview = communityReview('protected', 'Wednesday', 'maya', 'followers');
+    const publicReview = communityReview('public', 'Arrival', 'alex');
+    (cachedFollowingCommunityFeedService.list as jest.Mock).mockImplementation(
+      (_viewerId, options) => Promise.resolve({
+        reviews: options?.searchQuery ? [protectedReview] : [protectedReview, publicReview],
+        followsAnyone: true,
+        source: 'remote',
+        remoteError: null,
+      })
+    );
+    const screen = render(<CommunityScreen />);
+
+    await screen.findByText('Arrival');
+    fireEvent.changeText(screen.getByLabelText('Search community reviews'), 'Wednesday');
+    await waitFor(() => expect(cachedFollowingCommunityFeedService.list).toHaveBeenCalledWith(
+      'viewer-1',
+      expect.objectContaining({ searchQuery: 'Wednesday' })
+    ));
+    await waitFor(() => expect(screen.queryByText('Arrival')).toBeNull());
+    invalidateFollowingAuthorForSession('viewer-1', 'maya');
+    act(() => emitParentTabEvent('blur'));
+
+    expect(screen.getByText('Arrival')).toBeTruthy();
+    expect(screen.queryByText('Wednesday')).toBeNull();
+  });
+
+  it('does not substitute a Following snapshot while Everyone is active', async () => {
+    (cachedFollowingCommunityFeedService.list as jest.Mock).mockResolvedValue({
+      reviews: [communityReview('following', 'Arrival', 'alex')],
+      followsAnyone: true,
+      source: 'remote',
+      remoteError: null,
+    });
+    (cachedEveryoneCommunityFeedService.listPage as jest.Mock).mockResolvedValue({
+      reviews: [communityReview('everyone', 'Dune', 'maya')],
+      nextCursor: null,
+      source: 'remote',
+      remoteError: null,
+    });
+    const screen = render(<CommunityScreen />);
+
+    await screen.findByText('Arrival');
+    fireEvent.press(screen.getByText('Everyone'));
+    await screen.findByText('Dune');
+    fireEvent.changeText(screen.getByLabelText('Search community reviews'), 'Dune');
+    act(() => emitParentTabEvent('blur'));
+
+    expect(screen.getByText('Dune')).toBeTruthy();
+    expect(screen.queryByText('Arrival')).toBeNull();
+  });
+
+  it('ignores a delayed searched-feed response after restoring the normal snapshot', async () => {
+    const initial = [
+      communityReview('wednesday', 'Wednesday', 'maya'),
+      communityReview('arrival', 'Arrival', 'alex'),
+    ];
+    let resolveSearch: ((value: unknown) => void) | undefined;
+    (cachedFollowingCommunityFeedService.list as jest.Mock).mockImplementation(
+      (_viewerId, options) => options?.searchQuery
+        ? new Promise((resolve) => { resolveSearch = resolve; })
+        : Promise.resolve({ reviews: initial, followsAnyone: true, source: 'remote', remoteError: null })
+    );
+    const screen = render(<CommunityScreen />);
+
+    await screen.findByText('Arrival');
+    fireEvent.changeText(screen.getByLabelText('Search community reviews'), 'Wednesday');
+    await waitFor(() => expect(resolveSearch).toBeDefined());
+    act(() => emitParentTabEvent('blur'));
+    await act(async () => {
+      resolveSearch?.({ reviews: [initial[0]], followsAnyone: true, source: 'remote', remoteError: null });
+    });
+
+    expect(screen.getByText('Arrival')).toBeTruthy();
+    expect(screen.getByDisplayValue('')).toBeTruthy();
+  });
+
+  it('restores an unselected Following search position after Review Details without accepting blurred-list scroll events', async () => {
+    (cachedFollowingCommunityFeedService.list as jest.Mock).mockResolvedValue({
+      followsAnyone: true,
+      reviews: [
+        {
+          id: 'wednesday-review', authorId: 'maya-1',
+          author: { id: 'maya-1', displayName: 'Maya', handle: 'maya', handleNormalized: 'maya', profileImage: null, accountPrivacy: 'public' },
+          movieTitle: 'Wednesday', reviewText: 'A sharp mystery with great performances.', rating: 4,
+          spoilerWarning: false, visibility: 'public', createdAt: '2026-10-10T12:00:00.000Z', syncStatus: 'synced',
+        },
+      ],
+    });
+    (mediaCatalogService.search as jest.Mock).mockResolvedValue({
+      items: [], nextCursor: null,
+    });
+    const interactionSpy = jest.spyOn(
+      InteractionManager,
+      'runAfterInteractions'
+    );
+    const scrollToOffset = jest.spyOn(FlatList.prototype, 'scrollToOffset');
+    const screen = render(<CommunityScreen />);
+
+    await screen.findByText('Wednesday');
+    const searchInput = screen.getByLabelText('Search community reviews');
+    const dismissKeyboard = jest.spyOn(Keyboard, 'dismiss');
+    fireEvent.changeText(searchInput, 'Wednesday');
+    expect(await screen.findByText('Review Text Matches')).toBeTruthy();
+    const list = screen.UNSAFE_getByType(FlatList);
+    act(() => {
+      list.props.onContentSizeChange(390, 1800);
+      list.props.onScroll({ nativeEvent: { contentOffset: { y: 468 } } });
+      list.props.onScrollBeginDrag();
+    });
+    expect(dismissKeyboard).toHaveBeenCalledTimes(1);
+    expect(screen.getByDisplayValue('Wednesday')).toBeTruthy();
+
+    act(() => {
+      fireEvent.press(screen.getByLabelText('Read review of Wednesday'));
+      blurCommunityScreen();
+      // FlatList may emit a transition scroll while the detail route is above it.
+      list.props.onScroll({ nativeEvent: { contentOffset: { y: 0 } } });
+      focusCommunityScreen();
+    });
+
+    expect(router.push).toHaveBeenCalledWith({
+      pathname: '/community/review/[reviewId]',
+      params: { authorId: 'maya-1', reviewId: 'wednesday-review' },
+    });
+    expect(screen.getByDisplayValue('Wednesday')).toBeTruthy();
+    expect(screen.getByText('Review Text Matches')).toBeTruthy();
+    expect(dismissKeyboard).toHaveBeenCalledTimes(2);
+    expect(scrollToOffset).toHaveBeenLastCalledWith({ animated: false, offset: 468 });
+    expect(interactionSpy).not.toHaveBeenCalled();
+    expect(getCommunityScrollOffset('viewer-1')).toBe(468);
+    fireEvent.changeText(searchInput, 'Wednesday Addams');
+    expect(screen.getByDisplayValue('Wednesday Addams')).toBeTruthy();
+    scrollToOffset.mockRestore();
+    interactionSpy.mockRestore();
+    dismissKeyboard.mockRestore();
+  });
+
+  it('uses drag keyboard dismissal without treating programmatic restoration as a user drag', async () => {
+    (cachedFollowingCommunityFeedService.list as jest.Mock).mockResolvedValue({
+      followsAnyone: true,
+      reviews: [],
+    });
+    const screen = render(<CommunityScreen />);
+
+    await screen.findByText('Your Following feed is quiet');
+    const dismissKeyboard = jest.spyOn(Keyboard, 'dismiss');
+    const list = screen.UNSAFE_getByType(FlatList);
+
+    expect(list.props.keyboardDismissMode).toBe('on-drag');
+    act(() => list.props.onContentSizeChange(390, 1600));
+    expect(dismissKeyboard).not.toHaveBeenCalled();
+
+    act(() => list.props.onScrollBeginDrag());
+    expect(dismissKeyboard).toHaveBeenCalledTimes(1);
+    dismissKeyboard.mockRestore();
+  });
+
+  it('restores ordinary and selected-media Community positions after Review Details', async () => {
+    (cachedFollowingCommunityFeedService.list as jest.Mock).mockResolvedValue({
+      followsAnyone: true,
+      reviews: [
+        {
+          id: 'arrival-review', authorId: 'alex-1',
+          author: { id: 'alex-1', displayName: 'Alex', handle: 'alex', handleNormalized: 'alex', profileImage: null, accountPrivacy: 'public' },
+          movieTitle: 'Arrival', reviewText: 'Thoughtful science fiction.', rating: 5,
+          spoilerWarning: false, visibility: 'public', createdAt: '2026-10-10T12:00:00.000Z', syncStatus: 'synced',
+        },
+      ],
+    });
+    (mediaCatalogService.search as jest.Mock).mockImplementation((_query, options) =>
+      Promise.resolve({
+        items: options?.mediaType === 'movie'
+          ? [{ catalogId: 'tmdb:movie:329865', mediaType: 'movie', reviewTargetType: 'movie', title: 'Arrival', releaseYear: 2016, genres: [], posterUrl: null }]
+          : [],
+        nextCursor: null,
+      })
+    );
+    (exactMediaCommunitySearchService.search as jest.Mock).mockResolvedValue({
+      reviews: [
+        {
+          id: 'selected-arrival-review', authorId: 'alex-1',
+          author: { id: 'alex-1', displayName: 'Alex', handle: 'alex', handleNormalized: 'alex', profileImage: null, accountPrivacy: 'public' },
+          movieTitle: 'Arrival', reviewText: 'Still thoughtful.', rating: 5,
+          spoilerWarning: false, visibility: 'public', createdAt: '2026-10-10T12:00:00.000Z', syncStatus: 'synced',
+        },
+      ],
+      pagination: { retrieval: 'bounded', nextCursor: null },
+    });
+    const scrollToOffset = jest.spyOn(FlatList.prototype, 'scrollToOffset');
+    const screen = render(<CommunityScreen />);
+
+    await screen.findByText('Arrival');
+    let list = screen.UNSAFE_getByType(FlatList);
+    act(() => {
+      list.props.onContentSizeChange(390, 1600);
+      list.props.onScroll({ nativeEvent: { contentOffset: { y: 275 } } });
+      blurCommunityScreen();
+      list.props.onScroll({ nativeEvent: { contentOffset: { y: 0 } } });
+      // The native list may report its existing content before the screen's
+      // focus effect has armed restoration.
+      list.props.onContentSizeChange(390, 1600);
+      focusCommunityScreen();
+    });
+    await waitFor(() => {
+      expect(scrollToOffset).toHaveBeenLastCalledWith({ animated: false, offset: 275 });
+    });
+
+    fireEvent.changeText(screen.getByLabelText('Search community reviews'), 'arrival');
+    fireEvent.press(await screen.findByLabelText('Select Arrival'));
+    expect(await screen.findByText('Reviews for Arrival')).toBeTruthy();
+    list = screen.UNSAFE_getByType(FlatList);
+    act(() => {
+      list.props.onContentSizeChange(390, 1600);
+      list.props.onScroll({ nativeEvent: { contentOffset: { y: 390 } } });
+      blurCommunityScreen();
+      list.props.onScroll({ nativeEvent: { contentOffset: { y: 0 } } });
+      focusCommunityScreen();
+    });
+
+    expect(screen.getByText('Reviews for Arrival')).toBeTruthy();
+    expect(getCommunityScrollOffset('viewer-1')).toBe(390);
+    await waitFor(() => {
+      expect(scrollToOffset).toHaveBeenLastCalledWith({ animated: false, offset: 390 });
+    });
+    scrollToOffset.mockRestore();
+  });
+
+  it('restores an ordinary Everyone position without reloading search state', async () => {
+    (cachedFollowingCommunityFeedService.list as jest.Mock).mockResolvedValue({
+      followsAnyone: true,
+      reviews: [],
+    });
+    (cachedEveryoneCommunityFeedService.listPage as jest.Mock).mockResolvedValue({
+      reviews: [
+        {
+          id: 'everyone-review', authorId: 'maya-1',
+          author: { id: 'maya-1', displayName: 'Maya', handle: 'maya', handleNormalized: 'maya', profileImage: null, accountPrivacy: 'public' },
+          movieTitle: 'Wednesday', reviewText: 'A clever mystery.', rating: 4,
+          spoilerWarning: false, visibility: 'public', createdAt: '2026-10-10T12:00:00.000Z', syncStatus: 'synced',
+        },
+      ],
+      nextCursor: null,
+      source: 'remote',
+      remoteError: null,
+    });
+    const scrollToOffset = jest.spyOn(FlatList.prototype, 'scrollToOffset');
+    const screen = render(<CommunityScreen />);
+
+    await screen.findByText('Your Following feed is quiet');
+    fireEvent.press(screen.getByText('Everyone'));
+    await screen.findByText('Wednesday');
+    const list = screen.UNSAFE_getByType(FlatList);
+    act(() => {
+      list.props.onContentSizeChange(390, 1600);
+      list.props.onScroll({ nativeEvent: { contentOffset: { y: 285 } } });
+      blurCommunityScreen();
+      list.props.onScroll({ nativeEvent: { contentOffset: { y: 0 } } });
+      focusCommunityScreen();
+    });
+
+    await waitFor(() => {
+      expect(scrollToOffset).toHaveBeenLastCalledWith({ animated: false, offset: 285 });
+    });
+    expect(screen.getByText('Everyone')).toBeTruthy();
+    expect(screen.getByText('Wednesday')).toBeTruthy();
+    scrollToOffset.mockRestore();
+  });
+
+  it('does not let a delayed catalog response reset a restored search position', async () => {
+    let resolveMovieSearch: ((value: { items: unknown[]; nextCursor: null }) => void) | undefined;
+    let resolveTvSearch: ((value: { items: unknown[]; nextCursor: null }) => void) | undefined;
+    (cachedFollowingCommunityFeedService.list as jest.Mock).mockResolvedValue({
+      followsAnyone: true,
+      reviews: [
+        {
+          id: 'delayed-wednesday-review', authorId: 'maya-1',
+          author: { id: 'maya-1', displayName: 'Maya', handle: 'maya', handleNormalized: 'maya', profileImage: null, accountPrivacy: 'public' },
+          movieTitle: 'Wednesday', reviewText: 'A clever mystery.', rating: 4,
+          spoilerWarning: false, visibility: 'public', createdAt: '2026-10-10T12:00:00.000Z', syncStatus: 'synced',
+        },
+      ],
+    });
+    (mediaCatalogService.search as jest.Mock).mockImplementation((_query, options) =>
+      new Promise((resolve) => {
+        if (options?.mediaType === 'movie') {
+          resolveMovieSearch = resolve;
+        } else {
+          resolveTvSearch = resolve;
+        }
+      })
+    );
+    const scrollToOffset = jest.spyOn(FlatList.prototype, 'scrollToOffset');
+    const screen = render(<CommunityScreen />);
+
+    await screen.findByText('Wednesday');
+    fireEvent.changeText(screen.getByLabelText('Search community reviews'), 'Wednesday');
+    expect(await screen.findByText('Review Text Matches')).toBeTruthy();
+    const list = screen.UNSAFE_getByType(FlatList);
+    act(() => {
+      list.props.onContentSizeChange(390, 1600);
+      list.props.onScroll({ nativeEvent: { contentOffset: { y: 512 } } });
+      blurCommunityScreen();
+      focusCommunityScreen();
+    });
+
+    await waitFor(() => {
+      expect(resolveMovieSearch).toBeDefined();
+      expect(resolveTvSearch).toBeDefined();
+    });
+    await act(async () => {
+      resolveMovieSearch?.({ items: [], nextCursor: null });
+      resolveTvSearch?.({ items: [], nextCursor: null });
+    });
+    act(() => list.props.onContentSizeChange(390, 1800));
+
+    expect(screen.getByDisplayValue('Wednesday')).toBeTruthy();
+    expect(getCommunityScrollOffset('viewer-1')).toBe(512);
+    expect(scrollToOffset).toHaveBeenLastCalledWith({ animated: false, offset: 512 });
+    scrollToOffset.mockRestore();
+  });
+
+  it('ignores a delayed focus restoration after a main-tab exit', async () => {
+    const interactionTasks: Array<() => void> = [];
+    const interactionSpy = jest
+      .spyOn(InteractionManager, 'runAfterInteractions')
+      .mockImplementation((task) => {
+        if (typeof task === 'function') interactionTasks.push(task);
+        return {
+          cancel: jest.fn(),
+          done: jest.fn(),
+          then: (onfulfilled, onrejected) =>
+            Promise.resolve().then(onfulfilled, onrejected),
+        };
+      });
+    const scrollToOffset = jest.spyOn(FlatList.prototype, 'scrollToOffset');
+    (cachedFollowingCommunityFeedService.list as jest.Mock).mockResolvedValue({
+      followsAnyone: true,
+      reviews: [
+        {
+          id: 'review-1', authorId: 'alex-1',
+          author: { id: 'alex-1', displayName: 'Alex', handle: 'alex', handleNormalized: 'alex', profileImage: null, accountPrivacy: 'public' },
+          movieTitle: 'Arrival', reviewText: 'Thoughtful.', rating: 5,
+          spoilerWarning: false, visibility: 'public', createdAt: '2026-10-10T12:00:00.000Z', syncStatus: 'synced',
+        },
+      ],
+    });
+    const screen = render(<CommunityScreen />);
+
+    await screen.findByText('Arrival');
+    const list = screen.UNSAFE_getByType(FlatList);
+    act(() => {
+      list.props.onScroll({ nativeEvent: { contentOffset: { y: 330 } } });
+      blurCommunityScreen();
+      focusCommunityScreen();
+    });
+    const delayedRestore = interactionTasks.at(-1);
+    expect(delayedRestore).toBeDefined();
+
+    act(() => emitParentTabEvent('blur'));
+    act(() => delayedRestore?.());
+
+    expect(getCommunityScrollOffset('viewer-1')).toBe(0);
+    expect(scrollToOffset).not.toHaveBeenCalledWith({ animated: false, offset: 330 });
+    scrollToOffset.mockRestore();
+    interactionSpy.mockRestore();
+  });
+
+  it('uses a later content-size event when the post-focus list is not ready', async () => {
+    const interactionTasks: Array<() => void> = [];
+    const interactionSpy = jest
+      .spyOn(InteractionManager, 'runAfterInteractions')
+      .mockImplementation((task) => {
+        if (typeof task === 'function') interactionTasks.push(task);
+        return {
+          cancel: jest.fn(),
+          done: jest.fn(),
+          then: (onfulfilled, onrejected) =>
+            Promise.resolve().then(onfulfilled, onrejected),
+        };
+      });
+    const scrollToOffset = jest.spyOn(FlatList.prototype, 'scrollToOffset');
+    (cachedFollowingCommunityFeedService.list as jest.Mock).mockResolvedValue({
+      followsAnyone: true,
+      reviews: [],
+    });
+    const screen = render(<CommunityScreen />);
+
+    await screen.findByText('Your Following feed is quiet');
+    setCommunityScrollOffset('viewer-1', 410);
+    act(() => {
+      blurCommunityScreen();
+      focusCommunityScreen();
+    });
+    const delayedRestore = interactionTasks.at(-1);
+    act(() => delayedRestore?.());
+    expect(scrollToOffset).not.toHaveBeenCalledWith({ animated: false, offset: 410 });
+
+    const list = screen.UNSAFE_getByType(FlatList);
+    act(() => list.props.onContentSizeChange(390, 1700));
+    expect(scrollToOffset).toHaveBeenLastCalledWith({ animated: false, offset: 410 });
+    scrollToOffset.mockRestore();
+    interactionSpy.mockRestore();
+  });
+
+  it('cancels a pending focus restoration when a new search selects different media', async () => {
+    const interactionTasks: Array<() => void> = [];
+    const interactionSpy = jest
+      .spyOn(InteractionManager, 'runAfterInteractions')
+      .mockImplementation((task) => {
+        if (typeof task === 'function') interactionTasks.push(task);
+        return {
+          cancel: jest.fn(),
+          done: jest.fn(),
+          then: (onfulfilled, onrejected) =>
+            Promise.resolve().then(onfulfilled, onrejected),
+        };
+      });
+    const scrollToOffset = jest.spyOn(FlatList.prototype, 'scrollToOffset');
+    (cachedFollowingCommunityFeedService.list as jest.Mock).mockResolvedValue({
+      followsAnyone: true,
+      reviews: [
+        {
+          id: 'review-1', authorId: 'alex-1',
+          author: { id: 'alex-1', displayName: 'Alex', handle: 'alex', handleNormalized: 'alex', profileImage: null, accountPrivacy: 'public' },
+          movieTitle: 'Arrival', reviewText: 'Thoughtful.', rating: 5,
+          spoilerWarning: false, visibility: 'public', createdAt: '2026-10-10T12:00:00.000Z', syncStatus: 'synced',
+        },
+      ],
+    });
+    (mediaCatalogService.search as jest.Mock).mockImplementation((_query, options) =>
+      Promise.resolve({
+        items: options?.mediaType === 'movie'
+          ? [{ catalogId: 'tmdb:movie:329865', mediaType: 'movie', reviewTargetType: 'movie', title: 'Arrival', releaseYear: 2016, genres: [], posterUrl: null }]
+          : [],
+        nextCursor: null,
+      })
+    );
+    const screen = render(<CommunityScreen />);
+
+    await screen.findByText('Arrival');
+    const list = screen.UNSAFE_getByType(FlatList);
+    act(() => {
+      list.props.onScroll({ nativeEvent: { contentOffset: { y: 360 } } });
+      blurCommunityScreen();
+      focusCommunityScreen();
+    });
+    const delayedRestore = interactionTasks.at(-1);
+
+    fireEvent.changeText(screen.getByLabelText('Search community reviews'), 'arrival');
+    fireEvent.press(await screen.findByLabelText('Select Arrival'));
+    act(() => delayedRestore?.());
+
+    expect(await screen.findByText('Reviews for Arrival')).toBeTruthy();
+    expect(getCommunityScrollOffset('viewer-1')).toBe(0);
+    expect(scrollToOffset).not.toHaveBeenCalledWith({ animated: false, offset: 360 });
+    scrollToOffset.mockRestore();
+    interactionSpy.mockRestore();
+  });
+
+  it('shows catalog empty and error states without making an exact-media review request', async () => {
+    (cachedFollowingCommunityFeedService.list as jest.Mock).mockResolvedValue({
+      reviews: [], followsAnyone: true,
+    });
+    (mediaCatalogService.search as jest.Mock).mockImplementation((query) =>
+      query === 'nothing'
+        ? Promise.resolve({ items: [], nextCursor: null })
+        : Promise.reject(new Error('offline'))
+    );
+    const screen = render(<CommunityScreen />);
+
+    await screen.findByText('Your Following feed is quiet');
+    fireEvent.changeText(screen.getByLabelText('Search community reviews'), 'nothing');
+    expect(await screen.findByText('No movies or TV series found.')).toBeTruthy();
+    fireEvent.press(screen.getByLabelText('Clear community review search'));
+    fireEvent.changeText(screen.getByLabelText('Search community reviews'), 'retry');
+    expect(await screen.findByText('Suggestions are unavailable.')).toBeTruthy();
+    expect(screen.getByText('Try again')).toBeTruthy();
+  });
+
   it('starts in Following and does not populate Everyone with Following data', async () => {
     (cachedFollowingCommunityFeedService.list as jest.Mock).mockResolvedValue({
       followsAnyone: true,
@@ -489,8 +1440,18 @@ describe('Community screen', () => {
     expect(
       StyleSheet.flatten(
         screen.getByLabelText('Poster placeholder for The Last Of Us').props.style
-      ).height
+    ).height
     ).toBe(166);
+
+    expect(mockParentTabNavigation.addListener).toHaveBeenCalledWith(
+      'blur',
+      expect.any(Function)
+    );
+    act(() => emitParentTabEvent('blur'));
+    await waitFor(() => {
+      expect(screen.queryByText('The ending changes everything.')).toBeNull();
+      expect(screen.getByText('Contains spoilers')).toBeTruthy();
+    });
   });
 
   it('shows an offline saved indicator and disables remote-only controls for cached Everyone results', async () => {

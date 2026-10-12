@@ -1,5 +1,6 @@
 const mockGetDocs = jest.fn();
 const mockGetDocsFromServer = jest.fn();
+const mockWhere = jest.fn();
 
 jest.mock('firebase/firestore', () => ({
   collection: jest.fn(),
@@ -12,7 +13,7 @@ jest.mock('firebase/firestore', () => ({
   orderBy: jest.fn(),
   query: jest.fn(),
   startAfter: jest.fn(),
-  where: jest.fn(),
+  where: (...args: unknown[]) => mockWhere(...args),
 }));
 
 jest.mock('@/config/firebase', () => ({ db: {} }));
@@ -84,5 +85,32 @@ describe('Firebase Community review deserialization', () => {
 
     expect(mockGetDocsFromServer).toHaveBeenCalledTimes(2);
     expect(mockGetDocs).not.toHaveBeenCalled();
+  });
+
+  it('constrains active-follow review queries to the exact matched target before bounded sorting', async () => {
+    mockGetDocsFromServer.mockResolvedValue({ docs: [] });
+
+    await firebaseCommunityReviewService.listVisibleFromAuthorsFromServer(
+      'viewer-1', ['author-1'], {
+        exactMedia: {
+          catalogId: 'tmdb:tv:42', mediaType: 'tv', reviewTargetType: 'series',
+        },
+        sort: 'newest',
+      }
+    );
+
+    expect(mockGetDocsFromServer).toHaveBeenCalledTimes(2);
+    expect(mockWhere).toHaveBeenCalledWith('userId', '==', 'author-1');
+    expect(mockWhere).toHaveBeenCalledWith('visibility', '==', 'public');
+    expect(mockWhere).toHaveBeenCalledWith('visibility', '==', 'followers');
+    expect(mockWhere.mock.calls).not.toContainEqual([
+      'visibility',
+      '==',
+      'private',
+    ]);
+    expect(mockWhere).toHaveBeenCalledWith('movie.matchStatus', '==', 'matched');
+    expect(mockWhere).toHaveBeenCalledWith('movie.catalogId', '==', 'tmdb:tv:42');
+    expect(mockWhere).toHaveBeenCalledWith('movie.mediaType', '==', 'tv');
+    expect(mockWhere).toHaveBeenCalledWith('movie.reviewTargetType', '==', 'series');
   });
 });
