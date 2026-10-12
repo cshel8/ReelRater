@@ -7,6 +7,10 @@ import {
   getDisplayReviewMovieTitle,
   readReviewMediaSnapshot,
 } from '@/utils/reviewMovie';
+import {
+  matchesCommunityReviewKeyword,
+  matchesCommunitySelectedMedia,
+} from '@/services/community/communitySearch';
 
 const reviewTime = (review: SharedReview) => {
   const value = new Date(review.createdAt).getTime();
@@ -46,24 +50,27 @@ export const applyCommunityReviewOptions = <T extends SharedReview>(
     50,
     Math.max(1, options.maximumResults ?? 20)
   );
+  const exactIdentityReviews = options.exactMedia
+    ? reviews.filter((review) =>
+        matchesCommunitySelectedMedia(review, options.exactMedia!)
+      )
+    : reviews;
   const matchingReviews =
     mediaFilter === 'all'
-      ? reviews
-      : reviews.filter(
+      ? exactIdentityReviews
+      : exactIdentityReviews.filter(
           (review) =>
             readReviewMediaSnapshot(review.movie, review.movieTitle)
               .mediaType === mediaFilter
         );
-  const normalizedSearchQuery = options.searchQuery?.trim().toLocaleLowerCase();
+  const normalizedSearchQuery = options.searchQuery?.trim();
   const searchedReviews = normalizedSearchQuery
-    ? matchingReviews.filter((review) => {
-        const title = getDisplayReviewMovieTitle(review).toLocaleLowerCase();
-        const reviewText = review.reviewText.toLocaleLowerCase();
-        return (
-          title.includes(normalizedSearchQuery) ||
-          reviewText.includes(normalizedSearchQuery)
-        );
-      })
+    ? matchingReviews.filter((review) =>
+        matchesCommunityReviewKeyword(
+          { ...review, movieTitle: getDisplayReviewMovieTitle(review) },
+          normalizedSearchQuery
+        )
+      )
     : matchingReviews;
 
   return [...searchedReviews]

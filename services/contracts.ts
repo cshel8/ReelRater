@@ -134,7 +134,59 @@ export type CommunityFeedOptions = {
    */
   searchQuery?: string;
   sort?: CommunityReviewSort;
+  /**
+   * An internal, exact catalog target for Community retrieval. It is not a
+   * keyword search and deliberately takes precedence over `mediaFilter`.
+   */
+  exactMedia?: CommunitySelectedMedia;
 };
+
+/** The review audience selected in the Community segmented control. */
+export type CommunitySearchScope = 'following' | 'everyone';
+
+/**
+ * A catalog-backed Community search target. This deliberately contains only
+ * stable identity fields rather than display metadata such as a title.
+ */
+export type CommunitySelectedMedia = Pick<
+  MediaSummary,
+  'catalogId' | 'mediaType' | 'reviewTargetType'
+>;
+
+/**
+ * Provider-neutral input for an exact catalog-media Community search.
+ * `cursor` is meaningful only for the paginated Everyone scope.
+ */
+export type CommunityExactMediaSearchRequest = {
+  scope: CommunitySearchScope;
+  selectedMedia: CommunitySelectedMedia;
+  sort: CommunityReviewSort;
+  maximumResults?: number;
+  cursor?: PublicReviewPageCursor | null;
+};
+
+/**
+ * Presentation-neutral pagination information for exact-media results.
+ * Following remains bounded by the existing privacy-safe author retrieval;
+ * Everyone uses its existing cursor-pagination model.
+ */
+export type CommunitySearchPageMetadata = {
+  retrieval: 'bounded' | 'paginated';
+  nextCursor: PublicReviewPageCursor | null;
+};
+
+export type CommunityExactMediaSearchResult = {
+  reviews: CommunityReview[];
+  pagination: CommunitySearchPageMetadata;
+};
+
+/** Provider-neutral exact catalog-media retrieval for Community Search. */
+export interface CommunityExactMediaSearchService {
+  search(
+    viewerId: string,
+    request: CommunityExactMediaSearchRequest
+  ): Promise<CommunityExactMediaSearchResult>;
+}
 
 export interface CommunityFeedService {
   list(
@@ -167,6 +219,8 @@ export interface PublicReviewRepository {
   listPublicPage(options: {
     mediaFilter: CommunityReviewMediaFilter;
     sort: CommunityReviewSort;
+    /** When present, this exact identity overrides the broad media filter. */
+    exactMedia?: CommunitySelectedMedia;
     cursor?: PublicReviewPageCursor | null;
     maximumResults?: number;
   }): Promise<PublicReviewPage>;
@@ -178,7 +232,9 @@ export interface EveryoneCommunityFeedService {
     options: {
       mediaFilter: CommunityReviewMediaFilter;
       sort: CommunityReviewSort;
+      exactMedia?: CommunitySelectedMedia;
       cursor?: PublicReviewPageCursor | null;
+      maximumResults?: number;
     }
   ): Promise<Omit<PublicReviewPage, 'reviews'> & { reviews: CommunityReview[] }>;
 }

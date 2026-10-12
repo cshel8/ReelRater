@@ -2,6 +2,7 @@ import {
   collection,
   documentId,
   getDocs,
+  getDocsFromServer,
   limit,
   orderBy,
   query,
@@ -14,6 +15,7 @@ import type {
   PublicReviewPage,
   PublicReviewRepository,
 } from '@/services/contracts';
+import { isValidCommunitySelectedMedia } from '@/services/community/communitySearch';
 import { deserializeReviewMovie, readFirestoreRating } from '@/services/firebase/reviewSerialization';
 import type { SharedReview } from '@/types/domain';
 
@@ -43,14 +45,32 @@ const orderConstraints = (sort: 'newest' | 'oldest' | 'highest' | 'lowest') => {
 };
 
 export const firebasePublicReviewRepository: PublicReviewRepository = {
-  async listPublicPage({ mediaFilter, sort, cursor, maximumResults = PAGE_SIZE }): Promise<PublicReviewPage> {
+  async listPublicPage({ mediaFilter, sort, exactMedia, cursor, maximumResults = PAGE_SIZE }): Promise<PublicReviewPage> {
+    if (exactMedia && !isValidCommunitySelectedMedia(exactMedia)) {
+      throw new Error('Invalid exact Community media identity.');
+    }
     const requestedSize = Math.min(PAGE_SIZE, Math.max(1, maximumResults));
     const constraints: QueryConstraint[] = [where('visibility', '==', 'public')];
-    if (mediaFilter !== 'all') constraints.push(where('movie.mediaType', '==', mediaFilter));
+    if (exactMedia) {
+      constraints.push(
+        where('movie.matchStatus', '==', 'matched'),
+        where('movie.catalogId', '==', exactMedia.catalogId),
+        where('movie.mediaType', '==', exactMedia.mediaType),
+        where('movie.reviewTargetType', '==', exactMedia.reviewTargetType)
+      );
+    } else if (mediaFilter !== 'all') {
+      constraints.push(where('movie.mediaType', '==', mediaFilter));
+    }
     constraints.push(...orderConstraints(sort));
     if (cursor) constraints.push(startAfter(...cursor.values));
     constraints.push(limit(requestedSize + 1));
-    const snapshot = await getDocs(query(collection(db, 'reviews'), ...constraints));
+    const reviewQuery = query(collection(db, 'reviews'), ...constraints);
+    // Exact-media search is an explicit online retrieval feature. Keep the
+    // ordinary Everyone feed's existing cache-aware behavior unchanged, but
+    // require the server for a selected catalog identity.
+    const snapshot = exactMedia
+      ? await getDocsFromServer(reviewQuery)
+      : await getDocs(reviewQuery);
     const pageDocuments = snapshot.docs.slice(0, requestedSize);
     const reviews = pageDocuments.flatMap((document) => {
       const review = readReview(document.id, document.data());

@@ -13,8 +13,12 @@ import {
   where,
 } from 'firebase/firestore';
 import { db } from '@/config/firebase';
-import type { RemoteCommunityReviewService } from '@/services/contracts';
+import type {
+  CommunitySelectedMedia,
+  RemoteCommunityReviewService,
+} from '@/services/contracts';
 import { applyCommunityReviewOptions } from '@/services/community/communityReviewOrdering';
+import { isValidCommunitySelectedMedia } from '@/services/community/communitySearch';
 import type {
   ReviewVisibility,
   SharedReview,
@@ -96,13 +100,25 @@ function readSharedReview(
 const queryAuthorReviews = async (
   authorId: string,
   visibility: Exclude<ReviewVisibility, 'private'>,
-  readFromServer = false
+  readFromServer = false,
+  exactMedia?: CommunitySelectedMedia
 ) => {
   try {
+    if (exactMedia && !isValidCommunitySelectedMedia(exactMedia)) {
+      throw new Error('Invalid exact Community media identity.');
+    }
     const reviewsQuery = query(
       collection(db, 'reviews'),
       where('userId', '==', authorId),
-      where('visibility', '==', visibility)
+      where('visibility', '==', visibility),
+      ...(exactMedia
+        ? [
+            where('movie.matchStatus', '==', 'matched'),
+            where('movie.catalogId', '==', exactMedia.catalogId),
+            where('movie.mediaType', '==', exactMedia.mediaType),
+            where('movie.reviewTargetType', '==', exactMedia.reviewTargetType),
+          ]
+        : [])
     );
     return readFromServer
       ? await getDocsFromServer(reviewsQuery)
@@ -147,7 +163,7 @@ export const firebaseCommunityReviewService: RemoteCommunityReviewService = {
     const snapshots = await Promise.all(
       [...new Set(authorIds)].flatMap((authorId) =>
         (['public', 'followers'] as const).map((visibility) =>
-          queryAuthorReviews(authorId, visibility)
+          queryAuthorReviews(authorId, visibility, false, options.exactMedia)
         )
       )
     );
@@ -163,7 +179,7 @@ export const firebaseCommunityReviewService: RemoteCommunityReviewService = {
     const snapshots = await Promise.all(
       [...new Set(authorIds)].flatMap((authorId) =>
         (['public', 'followers'] as const).map((visibility) =>
-          queryAuthorReviews(authorId, visibility, true)
+          queryAuthorReviews(authorId, visibility, true, options.exactMedia)
         )
       )
     );

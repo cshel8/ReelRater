@@ -149,4 +149,40 @@ describe('community review filtering and sorting', () => {
       }).map((review) => review.id)
     ).toEqual(['tv-text-match']);
   });
+
+  it('uses the complete matched identity when an exact Community target is supplied', () => {
+    const selectedMedia = {
+      catalogId: 'tmdb:movie:42',
+      mediaType: 'movie' as const,
+      reviewTargetType: 'movie' as const,
+    };
+    const matchingMovie = createReview({
+      id: 'matching', mediaType: 'movie', rating: 5,
+      createdAt: '2026-08-03T12:00:00.000Z', title: 'Arrival',
+    });
+    matchingMovie.movie = createMatchedMediaSnapshot({
+      ...selectedMedia, title: 'Arrival', releaseYear: 2016, genres: [], posterUrl: null,
+    });
+    const sameProviderNumberTv = createReview({
+      id: 'tv-collision', mediaType: 'tv', rating: 5,
+      createdAt: '2026-08-02T12:00:00.000Z', title: 'Arrival',
+    });
+    sameProviderNumberTv.movie = createMatchedMediaSnapshot({
+      catalogId: 'tmdb:tv:42', mediaType: 'tv', reviewTargetType: 'series',
+      title: 'Arrival', releaseYear: 2026, genres: [], posterUrl: null,
+    });
+    const manual = createReview({
+      id: 'manual', mediaType: 'movie', rating: 5,
+      createdAt: '2026-08-01T12:00:00.000Z', title: 'Arrival',
+    });
+    manual.movie = {
+      title: 'Arrival', releaseYear: null, genres: [], posterUrl: null,
+      mediaType: 'movie', reviewTargetType: 'movie', matchStatus: 'manual', catalogId: null,
+    };
+
+    expect(applyCommunityReviewOptions(
+      [matchingMovie, sameProviderNumberTv, manual],
+      { exactMedia: selectedMedia, mediaFilter: 'all' }
+    ).map((review) => review.id)).toEqual(['matching']);
+  });
 });

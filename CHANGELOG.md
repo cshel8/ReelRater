@@ -3,6 +3,125 @@
 Concise developer history of meaningful ReelRater architecture decisions,
 security changes, backend work, migrations, bug fixes, and feature behavior.
 
+## **2026-10-12 — Community Navigation State Refinement**
+
+### Changed
+
+- Community now preserves search, selected-media, scroll, and spoiler state
+  while navigating to and back from nested Review Details.
+- Leaving Community for another main tab clears only temporary Community
+  search state, resets the list position, reconceals spoilers, and refreshes
+  the retained Following or Everyone view safely on return.
+- Preserved the exact Community list position for ordinary, keyword-search,
+  and selected-media views when returning from nested Review Details by
+  restoring immediately as Community regains focus, before the outgoing
+  detail transition reveals it. Cancelable post-interaction and content-size
+  fallbacks remain for lists that are not ready, while hidden-list scroll
+  events remain ignored.
+- Community now blurs its search input when a user begins dragging results or
+  opens Review Details so iOS hardware-keyboard focus cannot remain active
+  during nested navigation; blurring does not clear the current search.
+- Returning from another main tab now restores the same account's most recent
+  authoritative, unsearched Following feed immediately while its normal focus
+  refresh runs, instead of briefly presenting keyword-search results as the
+  ordinary feed. Unsafe cache-only or authorization-invalidated snapshots are
+  not restored.
+- Removed the deferred Everyone review-text unavailable message; Everyone
+  now shows catalog suggestions without implying global text search exists.
+
+## **2026-10-12 — Community Search Organization Refinement**
+
+### Changed
+
+- Grouped catalog suggestions into independently expandable Movies and TV
+  Shows sections, initially showing up to three relevant results per type.
+- Kept Following review-text matches visibly separate beneath catalog
+  suggestions. Everyone omits that section because global review-text search
+  is intentionally deferred.
+- Clearing a selected title now exits Community search and returns to the
+  ordinary feed without changing the user's scope, filter, or sort preference.
+
+## **2026-10-12 — Community Search Exact-Media UI Integration**
+
+### Added
+
+- Connected selected movie and TV catalog suggestions in Community to the
+  existing exact-media retrieval service for both Following and Everyone.
+- A selected title now keeps its stable catalog identity while scope and sort
+  preferences change, shows an explicit selected-media card, and clears back
+  to catalog suggestions when the user changes the search.
+- Everyone exact-media results retain cursor pagination; Following remains a
+  bounded, active-follow-authorized result set. Exact-media searches remain
+  online-only and do not fall back to saved Community snapshots.
+
+### Scope
+
+- Global Everyone review-text search and the later two-section result design
+  remain deferred. This checkpoint does not change Firestore rules, index
+  configuration, SQLite schema, or Community cache policy.
+
+## **2026-10-11 — Community Search Exact-Media Retrieval Foundation**
+
+### Added
+
+- Added provider-neutral, exact matched-media retrieval services for Community
+  Search without integrating the new retrieval into the Community screen.
+- Everyone now has a real, public-only Firestore query path constrained by
+  catalog ID, media type, review target type, and matched status, while
+  preserving existing deterministic sort and cursor behavior. Selected
+  exact-media queries use a server-only Firestore read; ordinary Everyone
+  page reads retain their existing cache-aware behavior.
+- Following reuses its server-authoritative active-follow path and constrains
+  each eligible author/visibility query before its existing bounded ordering.
+- Added a regression test proving protected exact-media results disappear when
+  the authoritative active-follow relationship is no longer present, and that
+  Following query failures do not substitute stale protected results.
+- Added the required local Firestore composite-index definitions. The five
+  exact-media indexes were subsequently deployed and enabled in the controlled
+  Firestore-index checkpoint.
+
+### Scope
+
+- Exact-media retrieval is online-only in this checkpoint. Existing SQLite
+  Community cache behavior and ordinary search typing remain unchanged; UI
+  integration is deferred to Community Search Checkpoint 3B.
+
+## **2026-10-11 — Community Search Catalog Suggestions**
+
+### Added
+
+- Added debounced, provider-neutral movie and TV catalog suggestions to the
+  existing Community search field, including loading, empty, retry, stale
+  response, selection, and dismissal handling.
+- Selected catalog media retains its stable catalog ID, media type, and review
+  target type across Following and Everyone, without using its display title
+  as identity or changing either feed's review retrieval.
+
+### Scope
+
+- Selecting a title deliberately does not yet query Community reviews. Global
+  Everyone review-text search and exact-media review retrieval remain deferred
+  to later Community Search checkpoints.
+
+## **2026-10-11 — Community Search Contracts and Query Design**
+
+### Added
+
+- Added provider-neutral, exact matched-media Community Search contracts and
+  pure query-planning utilities without changing Community UI or executing new
+  Firestore searches.
+- Exact media selection now requires provider-qualified catalog
+  identity plus explicit media/target type, so movie and TV catalog IDs cannot
+  collide and manual review snapshots cannot appear as matched results.
+- Extracted the existing bounded Following title/review-text keyword predicate
+  into a reusable pure utility. Global Everyone keyword search remains
+  intentionally deferred.
+
+### Scope
+
+- This checkpoint does not add a search screen, live catalog suggestions,
+  Firestore indexes or rules, SQLite storage, or a global full-text backend.
+
 ## **2026-09-27 — Community Offline Cache Persistence Foundation**
 
 ### Added

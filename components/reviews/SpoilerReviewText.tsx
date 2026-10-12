@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { colors } from '@/constants/colors';
 
@@ -8,6 +8,7 @@ export function SpoilerReviewText({
   onReveal,
   presentation = 'inline',
   reviewText,
+  resetToken = 0,
   spoilerWarning,
   textStyle,
 }: {
@@ -15,10 +16,14 @@ export function SpoilerReviewText({
   onReveal?: () => void;
   presentation?: 'community' | 'inline';
   reviewText: string;
+  resetToken?: number;
   spoilerWarning: boolean;
   textStyle?: object;
 }) {
   const [isRevealed, setIsRevealed] = useState(false);
+  useEffect(() => {
+    setIsRevealed(false);
+  }, [resetToken]);
 
   if (!spoilerWarning || isRevealed) {
     return (
