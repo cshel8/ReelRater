@@ -37,6 +37,7 @@ import { httpMediaBrowseService } from '@/services/http/mediaBrowseService';
 import { sqliteHomeSnapshotRepository } from '@/services/local/sqliteHomeSnapshotRepository';
 import { createCachedMediaCatalogService } from '@/services/movies/cachedMovieCatalogService';
 import { createHomeFeedService } from '@/services/movies/homeFeedService';
+import { createHomeRecommendationsService } from '@/services/movies/homeRecommendationsService';
 import { createMovieCacheMaintenanceService } from '@/services/movies/movieCacheMaintenanceService';
 import { createOfflineReviewService } from '@/services/reviews/offlineReviewService';
 import { createCatalogAwareReviewService } from '@/services/reviews/catalogAwareReviewService';
@@ -167,4 +168,13 @@ export const homeFeedService = createHomeFeedService(
 export const homeImageCacheService = createHomeImageCacheService(
   sqliteHomeImageCacheRepository,
   createExpoImageFileStore('reelrater-home-images')
+);
+
+/**
+ * Online-only, review-seeded Home recommendations. Deliberately unpersisted
+ * so personalized results can never leak across accounts.
+ */
+export const homeRecommendationsService = createHomeRecommendationsService(
+  reviewService,
+  httpMediaBrowseService
 );

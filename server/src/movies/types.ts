@@ -46,6 +46,11 @@ export interface MediaCatalogService {
     mediaType: MediaTarget['mediaType'],
     options?: MediaBrowseOptions
   ): Promise<MediaSummary[]>;
+  /** Titles the catalog recommends alongside the given movie or series. */
+  recommendationsFor(
+    catalogId: MediaCatalogId,
+    options?: MediaBrowseOptions
+  ): Promise<MediaSummary[]>;
 }
 
 /** Compatibility aliases while existing movie-specific files are migrated. */

@@ -78,6 +78,20 @@ export interface MediaBrowseService {
     mediaType: ReviewMediaTarget['mediaType'],
     options?: MediaBrowseOptions
   ): Promise<MediaSummary[]>;
+  /** Titles the catalog recommends alongside the given movie or series. */
+  recommendationsFor(
+    catalogId: MediaCatalogId,
+    options?: MediaBrowseOptions
+  ): Promise<MediaSummary[]>;
+}
+
+/**
+ * Personalized Home recommendations seeded by the signed-in user's own
+ * positively rated, catalog-matched reviews. Results are computed per call
+ * and intentionally never persisted, so nothing can leak across accounts.
+ */
+export interface HomeRecommendationsService {
+  getForUser(userId: string): Promise<MediaSummary[]>;
 }
 
 export type HomeSection = 'trending' | 'popularMovies' | 'popularTv';

@@ -261,6 +261,40 @@ export class TmdbMediaCatalog implements MediaCatalogService {
     }));
   }
 
+  async recommendationsFor(
+    value: string,
+    options: MediaBrowseOptions = {}
+  ): Promise<MediaSummary[]> {
+    const parsed = parseCatalogId(value);
+    const maximumResults = browseMaximum(options.maximumResults);
+    const [configuration, genres] = await Promise.all([
+      this.getConfiguration(),
+      this.getGenres(parsed.mediaType),
+    ]);
+
+    if (parsed.mediaType === 'tv') {
+      const response = await this.request<
+        TmdbSearchResponse<TmdbSearchSeries> | null
+      >(`/tv/${parsed.id}/recommendations`, { language: 'en-US' }, true);
+      return (response?.results ?? [])
+        .slice(0, maximumResults)
+        .map((series) => ({
+          ...this.toSeriesSummary(series, configuration, genres),
+          backdropUrl: this.backdropUrl(series.backdrop_path, configuration),
+        }));
+    }
+
+    const response = await this.request<
+      TmdbSearchResponse<TmdbSearchMovie> | null
+    >(`/movie/${parsed.id}/recommendations`, { language: 'en-US' }, true);
+    return (response?.results ?? [])
+      .slice(0, maximumResults)
+      .map((movie) => ({
+        ...this.toMovieSummary(movie, configuration, genres),
+        backdropUrl: this.backdropUrl(movie.backdrop_path, configuration),
+      }));
+  }
+
   async getById(value: string): Promise<MediaDetails | null> {
     const parsed = parseCatalogId(value);
     const configuration = await this.getConfiguration();

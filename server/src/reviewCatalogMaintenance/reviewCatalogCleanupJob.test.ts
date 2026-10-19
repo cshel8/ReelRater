@@ -73,6 +73,9 @@ test('cleanup refreshes, redacts, retries, and conditionally updates records', a
     async popular() {
       throw new Error('Not used by cleanup');
     },
+    async recommendationsFor() {
+      throw new Error('Not used by cleanup');
+    },
     async getById(catalogId) {
       if (catalogId === 'catalog:redact') {
         return null;
@@ -166,6 +169,9 @@ test('cleanup skips safely when another backend instance owns the lease', async 
     async popular() {
       throw new Error('Not used by cleanup');
     },
+    async recommendationsFor() {
+      throw new Error('Not used by cleanup');
+    },
     async getById() {
       throw new Error('Not used by cleanup');
     },
@@ -218,6 +224,9 @@ test('simultaneous calls share one active cleanup run', async () => {
       throw new Error('Not used by cleanup');
     },
     async popular() {
+      throw new Error('Not used by cleanup');
+    },
+    async recommendationsFor() {
       throw new Error('Not used by cleanup');
     },
     async getById() {

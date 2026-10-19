@@ -100,6 +100,48 @@ describe('HTTP media browse service', () => {
     );
   });
 
+  it('requests recommendations for an encoded catalog ID', async () => {
+    const fetchMock = jest.spyOn(global, 'fetch').mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        items: [
+          {
+            mediaType: 'movie',
+            reviewTargetType: 'movie',
+            catalogId: 'tmdb:movie:335984',
+            title: 'Blade Runner 2049',
+            releaseYear: 2017,
+            genres: ['Science Fiction'],
+            posterUrl: null,
+          },
+        ],
+      }),
+    } as Response);
+
+    await expect(
+      httpMediaBrowseService.recommendationsFor('tmdb:movie:693134', {
+        maximumResults: 10,
+      })
+    ).resolves.toEqual([
+      {
+        mediaType: 'movie',
+        reviewTargetType: 'movie',
+        catalogId: 'tmdb:movie:335984',
+        title: 'Blade Runner 2049',
+        releaseYear: 2017,
+        genres: ['Science Fiction'],
+        posterUrl: null,
+      },
+    ]);
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringMatching(
+        /\/api\/v1\/media\/tmdb%3Amovie%3A693134\/recommendations\?maximumResults=10$/
+      ),
+      { headers: { Accept: 'application/json' } }
+    );
+  });
+
   it('does not expose malformed browse records to the app', async () => {
     jest.spyOn(global, 'fetch').mockResolvedValue({
       ok: true,

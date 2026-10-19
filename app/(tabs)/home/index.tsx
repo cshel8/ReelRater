@@ -15,8 +15,13 @@ import { HomeHero } from '@/components/home/HomeHero';
 import { HomeSearchPanel } from '@/components/home/HomeSearchPanel';
 import { MediaPosterRow } from '@/components/home/MediaPosterRow';
 import { colors } from '@/constants/colors';
-import { homeFeedService, homeImageCacheService } from '@/services';
+import {
+  homeFeedService,
+  homeImageCacheService,
+  homeRecommendationsService,
+} from '@/services';
 import type { HomeSection, HomeSectionContent } from '@/services/contracts';
+import { userStore } from '@/store/userStore';
 import type { MediaSummary } from '@/types/domain';
 
 const SECTIONS: HomeSection[] = ['trending', 'popularMovies', 'popularTv'];
@@ -33,8 +38,11 @@ const failedSection = (error: unknown): HomeSectionContent => ({
 
 export default function Home() {
   const navigation = useNavigation();
+  const userId = userStore((state) => state.userId);
   const scrollRef = useRef<ScrollView | null>(null);
   const wasOffline = useRef(false);
+  const activeUserIdRef = useRef(userId);
+  const [recommendations, setRecommendations] = useState<MediaSummary[]>([]);
   const [contents, setContents] = useState<SectionContents>({});
   const [initialLoading, setInitialLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -69,6 +77,32 @@ export default function Home() {
     });
   }, []);
 
+  // A different signed-in account must never see this user's
+  // recommendations: clear on user change and drop stale async responses.
+  useEffect(() => {
+    activeUserIdRef.current = userId;
+    setRecommendations([]);
+  }, [userId]);
+
+  const loadRecommendations = useCallback(async () => {
+    const requestUserId = userId;
+    if (!requestUserId) {
+      setRecommendations([]);
+      return;
+    }
+    try {
+      const items =
+        await homeRecommendationsService.getForUser(requestUserId);
+      if (activeUserIdRef.current === requestUserId) {
+        setRecommendations(items);
+      }
+    } catch {
+      if (activeUserIdRef.current === requestUserId) {
+        setRecommendations([]);
+      }
+    }
+  }, [userId]);
+
   const loadSections = useCallback(async (forceRefresh = false) => {
     const results = await Promise.all(
       SECTIONS.map((section) =>
@@ -87,6 +121,7 @@ export default function Home() {
 
   useEffect(() => {
     let active = true;
+    void loadRecommendations();
     void loadSections().finally(() => {
       if (active) {
         setInitialLoading(false);
@@ -95,7 +130,7 @@ export default function Home() {
     return () => {
       active = false;
     };
-  }, [loadSections]);
+  }, [loadRecommendations, loadSections]);
 
   useEffect(
     () =>
@@ -105,11 +140,12 @@ export default function Home() {
         if (online && wasOffline.current) {
           wasOffline.current = false;
           void loadSections();
+          void loadRecommendations();
         } else if (!online) {
           wasOffline.current = true;
         }
       }),
-    [loadSections]
+    [loadRecommendations, loadSections]
   );
 
   const trending = contents.trending;
@@ -128,10 +164,11 @@ export default function Home() {
 
   const handleRefresh = useCallback(() => {
     setRefreshing(true);
+    void loadRecommendations();
     void loadSections(true).finally(() => {
       setRefreshing(false);
     });
-  }, [loadSections]);
+  }, [loadRecommendations, loadSections]);
 
   const brandHeaderTitle = useCallback(
     () => (
@@ -260,6 +297,11 @@ export default function Home() {
                 </Text>
               </View>
             ) : null}
+            <MediaPosterRow
+              items={recommendations}
+              onSelectItem={openDetails}
+              title="Recommended for You"
+            />
             <MediaPosterRow
               items={popularMovies?.items ?? []}
               onSelectItem={openDetails}

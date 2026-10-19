@@ -14,4 +14,5 @@ export const unavailableMovieCatalog: MovieCatalogService = {
   getById: unavailable,
   trending: unavailable,
   popular: unavailable,
+  recommendationsFor: unavailable,
 };
