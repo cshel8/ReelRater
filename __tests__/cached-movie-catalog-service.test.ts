@@ -86,4 +86,20 @@ describe('cached movie catalog service', () => {
     });
     expect(cache.markAccessed).toHaveBeenCalledWith(arrival.catalogId);
   });
+
+  it('returns a locally cached overview with offline details', async () => {
+    const remote = createRemote();
+    const cache = createCache();
+    remote.getById.mockRejectedValue(new Error('Network unavailable'));
+    cache.getById.mockResolvedValue({
+      ...arrival,
+      overview: 'A linguist works with the military.',
+    });
+    const service = createCachedMovieCatalogService(remote, cache);
+
+    await expect(service.getById(arrival.catalogId)).resolves.toEqual({
+      ...arrival,
+      overview: 'A linguist works with the military.',
+    });
+  });
 });

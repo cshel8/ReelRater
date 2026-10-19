@@ -3,6 +3,250 @@
 Concise developer history of meaningful ReelRater architecture decisions,
 security changes, backend work, migrations, bug fixes, and feature behavior.
 
+## **2026-10-18 — Home Checkpoint 6: Home Search**
+
+### Added
+
+- The Home header's search icon now opens a dedicated Search screen in the
+  Home stack: an auto-focused field with a clear action, a 300ms debounce,
+  and a request-ID guard so a superseded query's late responses are always
+  discarded — a new query never shows the previous query's results.
+- Searches reuse the existing cache-aware catalog service with two parallel
+  TMDB requests (up to 10 movies and 10 TV shows, no pagination), rendered as
+  labeled Movies and TV Shows sections with rounded posters, titles, and
+  type/year metadata. Selecting a result opens the reusable Media Details
+  screen; returning preserves the query and results, while leaving the Home
+  tab dismisses Search per the existing tab-reset behavior.
+- Honest availability states: cache-fallback results (identified by their
+  retention metadata) and offline sessions show a "results may be
+  incomplete" notice; an empty response is labeled "No results" only after a
+  successful probe of the API's existing /health endpoint confirms the
+  catalog was reachable — otherwise a retryable unavailable/offline message
+  is shown instead. Result posters reuse already-cached image files without
+  adding transient downloads to the Home image cache (new opt-out
+  `allowDownload` prop on the shared cached-image component).
+
+### Changed (post-review refinements)
+
+- Home search is now inline instead of a separate screen: the header icon
+  expands an auto-focused field beneath the header (icon becomes a close
+  action), the normal feed stays visible until a query is entered, a query
+  swaps in the full-height Movies/TV results, and closing search restores
+  the feed. All CP6 search behavior (debounce, stale-response protection,
+  offline cache handling, error/retry states, details navigation with
+  query/results preserved on return) carries over unchanged; leaving the
+  Home tab clears search.
+- An experimental instant tab-switching change (Home opting out of the
+  navigator's animated popToTopOnBlur in favor of its own instant stack
+  reset on tab blur) was reverted after Simulator testing showed slower,
+  more distracting transitions than the original behavior. Home uses the
+  standard popToTopOnBlur handling again; the tab-blur scroll reset and
+  search dismissal remain.
+
+### Scope
+
+- No server, schema, contract, or dependency changes beyond the additive
+  client-side health probe helper and image-component prop. Community and
+  Reviews search behavior is untouched.
+
+## **2026-10-18 — Home Checkpoint 5: Reusable Media Details Screen**
+
+### Added
+
+- A reusable cinematic details screen for movies and TV series, reached from
+  the Home hero (whole slide plus a new pink Concept B "View Details" button)
+  and from Popular Movies / Popular TV poster taps. It shows the backdrop
+  with the established gradient, an overlapping poster, title, Movie/TV
+  Series chip, genres and year, a pink-starred TMDB rating when available,
+  and the synopsis.
+- Details render instantly from the already-loaded item passed through
+  navigation, then enrich through the existing cache-aware
+  `mediaCatalogService.getById`. Offline, saved metadata and the cached
+  synopsis stay visible with the standard saved-content note; images reuse
+  the persistent Home image cache; ratings are online-only and simply hidden
+  when unavailable; with no data at all the screen shows a retryable error
+  state.
+- Additive catalog contract change: `getById` details responses now include
+  the optional `backdropUrl` and a `rating` (TMDB vote average, with unrated
+  titles reported as no rating). No new endpoints, caching, or schema.
+- Home now resets its scroll position only when leaving the Home tab, so
+  returning from Media Details preserves the scroll position and current
+  hero slide; hero auto-rotation pauses while Details is open and resumes on
+  return.
+
+### Changed (post-review polish)
+
+- The synopsis now sits in a white, softly shadowed card under a "Synopsis"
+  heading. The screen distinguishes three states: an available (possibly
+  cached) synopsis shows in the card even when the server is unreachable; a
+  successful response with no synopsis shows a neutral "No synopsis
+  available."; and a failed, uncached request shows the pink banner "Connect
+  to the internet to load this synopsis." instead of the card — a failed
+  request is never mislabeled as a missing synopsis. Review Details'
+  pink-tinted container is untouched.
+- Removed the hero's "View Details" button; tapping anywhere on a hero slide
+  still opens details, and arrows, swiping, dots, auto-rotation, and
+  pause/resume behavior are unchanged.
+- Fixed an offline mislabel: titles whose metadata was seeded by Home browse
+  caching (but whose synopsis was never fetched) showed "No synopsis
+  available." offline. Cache-sourced details are identified by their existing
+  retention metadata, so an unverified empty synopsis now shows the pink
+  "Connect to the internet" message; "No synopsis available." is reserved for
+  fresh catalog responses that confirm the synopsis is genuinely absent.
+
+### Scope
+
+- Home search and "Recommended for You" remain deferred. No Community,
+  Reviews, Profile, authentication, privacy, or Firebase changes.
+
+## **2026-10-18 — Home Checkpoint 4: Cinematic Home Screen**
+
+### Added
+
+- Replaced the placeholder Home tab with the approved Concept B cinematic
+  design: a ReelRater-branded header with a search icon (disabled until Home
+  search ships), a paged full-bleed Trending Now hero with backdrop images,
+  scrim, and pagination dots, followed by Popular Movies and Popular TV
+  horizontal poster rows in the app's established light/pink styling. No
+  greeting, profile avatar, duplicate trending row, or personalization claims.
+- Home now renders through the snapshot-backed feed service: cached sections
+  appear immediately, online refreshes respect the existing freshness window,
+  pull-to-refresh forces one, and a screen-scoped connectivity listener
+  reloads sections when the device comes back online without duplicating the
+  tab layout's global reconnect work.
+- Hero backdrops and row posters render through the persistent Home image
+  cache (local file first, then the remote URL, then a pink placeholder), so
+  previously viewed artwork works offline and missing images never hide
+  cached titles. Stale image cleanup runs after each section load.
+- Intentional states: loading skeleton, a subtle "showing saved content"
+  banner when a refresh fails but cached content exists, and a dedicated
+  empty state with retry for a first launch offline.
+- Converted the Home route to a nested stack (`app/(tabs)/home/`) matching
+  the Community/Profile pattern, ready for the media-details and search
+  screens in the next checkpoints. The Home status bar switches to light
+  content only while the cinematic hero is focused.
+
+### Changed (hero visual refinement)
+
+- Reduced the hero from 440pt to 320pt so sections are visible on first
+  paint, and tightened the label/title/meta spacing and pagination-dot
+  placement for a closer visual hierarchy.
+- Replaced the stacked translucent overlay views (which produced visible
+  horizontal bands) with smooth top and bottom smoothstep gradients rendered
+  from a tiny embedded PNG — no new dependency — plus a uniform dim layer so
+  text and the header stay legible over both bright and dark backdrops.
+- Moved the Home header into the native stack header used by the other tabs:
+  the ReelRater wordmark sits on the left and the disabled search icon on the
+  right, vertically centered beneath the iOS status bar, with the hero
+  starting immediately below. The status bar keeps standard dark content over
+  the white header, and the hero's top gradient was softened accordingly.
+
+### Changed (carousel controls)
+
+- The Trending Now hero gained subtle edge arrows (translucent circles
+  legible over bright and dark backdrops) and automatic rotation every 15
+  seconds with looping. Manual arrow taps and swipes reset the timer, and
+  rotation pauses while the user is dragging, when Home loses focus, or when
+  the app is backgrounded, resuming when Home is active again. Swiping and
+  pagination dots are unchanged, and cached/offline content rotates
+  identically.
+- EXPERIMENTAL (pending review): Popular Movies and Popular TV headings
+  gained small back/forward arrows that page the row about one viewport at a
+  time; each arrow disables at its end of the row and both hide when the
+  content fits. Swipe scrolling, poster dimensions, and layout are unchanged,
+  and the controls are isolated in one subcomponent for easy removal.
+
+- A compact "Welcome back, [name]!" greeting between the hero and Popular
+  Movies was trialed from the existing persisted user store and reverted the
+  same day after Simulator review — the cinematic design reads better without
+  it. Home ships without a greeting, matching the approved design decisions.
+
+### Scope
+
+- Media details and Home search are intentionally deferred to the next
+  checkpoints; the hero is not yet tappable and the search icon is disabled.
+  No Community, Reviews, Profile, authentication, or Firebase changes.
+
+## **2026-10-18 — Home Checkpoint 3: Persistent Home Image Cache**
+
+### Added
+
+- Added a persistent Home image cache for poster and backdrop files, kept
+  fully separate from the Reviews poster cache: entries are matched by exact
+  source URL (so routine snapshot refreshes never re-download unchanged
+  images), capped at 80 files with least-recently-used eviction, and expired
+  after 30 days without access, with an orphaned-file sweep during purges.
+- Downloads reuse the existing hardened image file-store logic (atomic
+  temp-file move, HTTP/MIME validation, 10MB per-file cap, failure cleanup)
+  via a new directory-parameterized factory; the Reviews poster store keeps
+  its original directory and behavior. Home files live in their own
+  `reelrater-home-images` cache directory and survive app restarts.
+- Image resolution is single-flight per source URL, self-heals metadata rows
+  whose files are missing on disk, and returns null on any failure so Home can
+  fall back to the remote URL or a placeholder — cached Home metadata stays
+  usable even when images are unavailable.
+- Metadata persists in the `cached_home_images` table created by migration
+  v13; no new schema changes were needed.
+
+### Scope
+
+- Service layer only; the Home UI will adopt this cache in the next
+  checkpoint. No Reviews, Community, Firebase, or schema behavior changes.
+
+## **2026-10-18 — Home Checkpoint 2: Client Browse Service and Offline Snapshots**
+
+### Added
+
+- Added a provider-neutral `MediaBrowseService` contract and its HTTP
+  implementation for the new trending/popular endpoints, including optional
+  `backdropUrl` parsing for the Home hero. Search and details parsing are
+  unchanged apart from reusing the shared response readers.
+- Added a snapshot-backed `homeFeedService` for Home discovery sections
+  (trending, popular movies, popular TV): successful remote results replace a
+  per-section SQLite snapshot atomically; failures fall back to the stored
+  snapshot with an explicit `remoteError`; concurrent loads of a section share
+  one in-flight request; a 15-minute freshness window avoids redundant
+  refetches. Home snapshots hold public, non-personalized catalog data and are
+  intentionally not account-scoped.
+- SQLite migration v13 (additive only): `home_section_snapshots`,
+  `cached_home_images` (metadata table for the upcoming Home image cache), and
+  a nullable `overview` column on `cached_movies`.
+- The movie cache now stores catalog overviews when details are fetched and
+  preserves them when later search/browse writes omit them, so offline details
+  can include a synopsis instead of always clearing it. Home browse results are
+  also written through the existing movie cache for offline details support.
+- `MediaSummary` gained an optional `backdropUrl`; review media snapshots
+  explicitly exclude it, leaving review persistence unchanged.
+
+### Scope
+
+- No UI changes yet; the Home screen itself and the Home image cache service
+  arrive in later checkpoints. No Firebase, Firestore rules/index, or
+  Community/Reviews behavior changes.
+
+## **2026-10-18 — Home Checkpoint 1: TMDB Browse Endpoints**
+
+### Added
+
+- Extended the server's provider-neutral media catalog boundary with browse
+  retrieval: weekly trending movies plus popular movies and popular TV, backed
+  by TMDB's trending/popular endpoints through the existing authenticated
+  request, configuration, and genre-mapping logic.
+- New public API endpoints on the modern media router only:
+  `GET /api/v1/media/trending` and
+  `GET /api/v1/media/popular?mediaType=movie|tv`, each returning
+  `{ items: MediaSummary[] }` with an optional bounded `maximumResults`
+  (1–20) and the established catalog error responses. The legacy
+  `/api/v1/movies` router surface is unchanged.
+- Browse results now include an optional `backdropUrl` (preferring TMDB's
+  `w780` backdrop size) for the upcoming Home cinematic hero; search and
+  details responses are unchanged.
+
+### Scope
+
+- Server-only change for the Home feature. No client, Firebase, Firestore
+  rules/index, or SQLite changes in this checkpoint.
+
 ## **2026-10-12 — Community Navigation State Refinement**
 
 ### Changed

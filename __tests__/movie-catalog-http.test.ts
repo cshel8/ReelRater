@@ -66,6 +66,40 @@ describe('HTTP movie catalog service', () => {
     });
   });
 
+  it('parses optional backdrop and rating from details responses', async () => {
+    jest.spyOn(global, 'fetch').mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        mediaType: 'movie',
+        reviewTargetType: 'movie',
+        catalogId: 'tmdb:movie:329865',
+        title: 'Arrival',
+        releaseYear: 2016,
+        genres: ['Science Fiction'],
+        posterUrl: 'https://image.example/w342/arrival.jpg',
+        backdropUrl: 'https://image.example/w780/arrival-wide.jpg',
+        overview: 'First contact.',
+        rating: 7.543,
+      }),
+    } as Response);
+
+    await expect(
+      httpMediaCatalogService.getById('tmdb:movie:329865')
+    ).resolves.toEqual({
+      mediaType: 'movie',
+      reviewTargetType: 'movie',
+      catalogId: 'tmdb:movie:329865',
+      title: 'Arrival',
+      releaseYear: 2016,
+      genres: ['Science Fiction'],
+      posterUrl: 'https://image.example/w342/arrival.jpg',
+      backdropUrl: 'https://image.example/w780/arrival-wide.jpg',
+      overview: 'First contact.',
+      rating: 7.543,
+    });
+  });
+
   it('preserves a normalized TV series returned by a media endpoint', async () => {
     jest.spyOn(global, 'fetch').mockResolvedValue({
       ok: true,

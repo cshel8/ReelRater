@@ -10,10 +10,14 @@ export type MediaSummary = MediaTarget & {
   releaseYear: number | null;
   genres: string[];
   posterUrl: string | null;
+  /** Wide hero image; supplied only by browse (trending/popular) results. */
+  backdropUrl?: string | null;
 };
 
 export type MediaDetails = MediaSummary & {
   overview: string | null;
+  /** The catalog's 0–10 community score, when it has one. */
+  rating?: number | null;
 };
 
 export type MediaSearchOptions = {
@@ -27,12 +31,21 @@ export type MediaSearchPage = {
   nextCursor: string | null;
 };
 
+export type MediaBrowseOptions = {
+  maximumResults?: number;
+};
+
 export interface MediaCatalogService {
   search(
     query: string,
     options?: MediaSearchOptions
   ): Promise<MediaSearchPage>;
   getById(catalogId: MediaCatalogId): Promise<MediaDetails | null>;
+  trending(options?: MediaBrowseOptions): Promise<MediaSummary[]>;
+  popular(
+    mediaType: MediaTarget['mediaType'],
+    options?: MediaBrowseOptions
+  ): Promise<MediaSummary[]>;
 }
 
 /** Compatibility aliases while existing movie-specific files are migrated. */

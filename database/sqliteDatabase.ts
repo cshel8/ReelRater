@@ -1,7 +1,7 @@
 import * as SQLite from 'expo-sqlite';
 
 const DATABASE_NAME = 'reel-rater.db';
-const DATABASE_VERSION = 12;
+const DATABASE_VERSION = 13;
 
 let databasePromise: Promise<SQLite.SQLiteDatabase> | null = null;
 
@@ -282,6 +282,33 @@ async function migrate(database: SQLite.SQLiteDatabase): Promise<void> {
           ON community_cached_feed_entries(viewer_uid, feed_mode, last_seen_at DESC);
 
         PRAGMA user_version = 12;
+      `);
+    }
+
+    if (currentVersion < 13) {
+      await transaction.execAsync(`
+        ALTER TABLE cached_movies
+          ADD COLUMN overview TEXT;
+
+        CREATE TABLE IF NOT EXISTS home_section_snapshots (
+          section TEXT PRIMARY KEY NOT NULL CHECK(
+            section IN ('trending', 'popularMovies', 'popularTv')
+          ),
+          items_json TEXT NOT NULL,
+          fetched_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS cached_home_images (
+          source_url TEXT PRIMARY KEY NOT NULL,
+          catalog_id TEXT NOT NULL,
+          local_uri TEXT NOT NULL,
+          last_accessed_at TEXT NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS cached_home_images_access_index
+          ON cached_home_images(last_accessed_at DESC);
+
+        PRAGMA user_version = 13;
       `);
     }
   });

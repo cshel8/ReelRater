@@ -3,7 +3,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import type { PosterFileStore } from '@/services/local/posterCacheTypes';
 
 const POSTER_DIRECTORY_NAME = 'reelrater-posters';
-const MAXIMUM_POSTER_BYTES = 10 * 1024 * 1024;
+const MAXIMUM_IMAGE_BYTES = 10 * 1024 * 1024;
 
 const extensionFor = (sourceUrl: string) => {
   try {
@@ -19,13 +19,15 @@ const extensionFor = (sourceUrl: string) => {
   }
 };
 
-export const expoPosterFileStore: PosterFileStore = {
+export const createExpoImageFileStore = (
+  directoryName: string
+): PosterFileStore => ({
   async download(sourceUrl, cacheKey) {
     if (!FileSystem.cacheDirectory) {
       throw new Error('Poster cache directory is unavailable.');
     }
 
-    const directory = `${FileSystem.cacheDirectory}${POSTER_DIRECTORY_NAME}/`;
+    const directory = `${FileSystem.cacheDirectory}${directoryName}/`;
     await FileSystem.makeDirectoryAsync(directory, { intermediates: true });
     const digest = await Crypto.digestStringAsync(
       Crypto.CryptoDigestAlgorithm.SHA256,
@@ -51,7 +53,7 @@ export const expoPosterFileStore: PosterFileStore = {
       if (
         !fileInfo.exists ||
         fileInfo.isDirectory ||
-        fileInfo.size > MAXIMUM_POSTER_BYTES
+        fileInfo.size > MAXIMUM_IMAGE_BYTES
       ) {
         throw new Error('Poster download is missing or too large.');
       }
@@ -81,7 +83,7 @@ export const expoPosterFileStore: PosterFileStore = {
     if (!FileSystem.cacheDirectory) {
       return [];
     }
-    const directory = `${FileSystem.cacheDirectory}${POSTER_DIRECTORY_NAME}/`;
+    const directory = `${FileSystem.cacheDirectory}${directoryName}/`;
     try {
       return (await FileSystem.readDirectoryAsync(directory)).map(
         (name) => `${directory}${name}`
@@ -90,4 +92,7 @@ export const expoPosterFileStore: PosterFileStore = {
       return [];
     }
   },
-};
+});
+
+export const expoPosterFileStore: PosterFileStore =
+  createExpoImageFileStore(POSTER_DIRECTORY_NAME);

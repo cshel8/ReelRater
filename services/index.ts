@@ -27,8 +27,16 @@ import { sqlitePosterCacheRepository } from '@/services/local/sqlitePosterCacheR
 import { sqliteReviewTargetIdentityRepository } from '@/services/local/sqliteReviewTargetIdentityRepository';
 import { asyncStorageCommunityPreferenceRepository } from '@/services/local/asyncStorageCommunityPreferenceRepository';
 import { netInfoConnectivityService } from '@/services/local/netInfoConnectivityService';
-import { expoPosterFileStore } from '@/services/local/expoPosterFileStore';
+import {
+  createExpoImageFileStore,
+  expoPosterFileStore,
+} from '@/services/local/expoPosterFileStore';
+import { sqliteHomeImageCacheRepository } from '@/services/local/sqliteHomeImageCacheRepository';
+import { createHomeImageCacheService } from '@/services/movies/homeImageCacheService';
+import { httpMediaBrowseService } from '@/services/http/mediaBrowseService';
+import { sqliteHomeSnapshotRepository } from '@/services/local/sqliteHomeSnapshotRepository';
 import { createCachedMediaCatalogService } from '@/services/movies/cachedMovieCatalogService';
+import { createHomeFeedService } from '@/services/movies/homeFeedService';
 import { createMovieCacheMaintenanceService } from '@/services/movies/movieCacheMaintenanceService';
 import { createOfflineReviewService } from '@/services/reviews/offlineReviewService';
 import { createCatalogAwareReviewService } from '@/services/reviews/catalogAwareReviewService';
@@ -141,3 +149,22 @@ export const movieCacheMaintenanceService =
     httpMediaCatalogService,
     sqliteMovieCacheRepository
   );
+
+/**
+ * Home's snapshot-backed browse source. Content is public, non-personalized
+ * catalog data, so it is intentionally not account-scoped.
+ */
+export const homeFeedService = createHomeFeedService(
+  httpMediaBrowseService,
+  sqliteHomeSnapshotRepository,
+  sqliteMovieCacheRepository
+);
+
+/**
+ * Persistent poster/backdrop files for Home, kept separate from the Reviews
+ * poster cache so its small per-user limit and retention rules are untouched.
+ */
+export const homeImageCacheService = createHomeImageCacheService(
+  sqliteHomeImageCacheRepository,
+  createExpoImageFileStore('reelrater-home-images')
+);

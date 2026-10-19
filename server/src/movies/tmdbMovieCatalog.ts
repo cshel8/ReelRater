@@ -2,6 +2,7 @@ import {
   InvalidMovieCatalogIdError,
   InvalidMovieCursorError,
   MovieCatalogUpstreamError,
+  type MediaBrowseOptions,
   type MediaCatalogService,
   type MediaDetails,
   type MediaSearchOptions,
@@ -19,6 +20,7 @@ type TmdbSearchMovie = {
   release_date?: string;
   genre_ids?: number[];
   poster_path?: string | null;
+  backdrop_path?: string | null;
 };
 
 type TmdbSearchSeries = {
@@ -27,6 +29,7 @@ type TmdbSearchSeries = {
   first_air_date?: string;
   genre_ids?: number[];
   poster_path?: string | null;
+  backdrop_path?: string | null;
 };
 
 type TmdbSearchResponse<T> = {
@@ -38,17 +41,20 @@ type TmdbSearchResponse<T> = {
 type TmdbMovieDetails = TmdbSearchMovie & {
   overview?: string | null;
   genres?: { id: number; name: string }[];
+  vote_average?: number;
 };
 
 type TmdbSeriesDetails = TmdbSearchSeries & {
   overview?: string | null;
   genres?: { id: number; name: string }[];
+  vote_average?: number;
 };
 
 type TmdbConfiguration = {
   images: {
     secure_base_url: string;
     poster_sizes: string[];
+    backdrop_sizes?: string[];
   };
 };
 
@@ -135,6 +141,13 @@ const parseCatalogId = (catalogId: string) => {
 const catalogId = (mediaType: MediaType, id: number) =>
   `${mediaType === 'tv' ? TV_ID_PREFIX : MOVIE_ID_PREFIX}${id}`;
 
+const browseMaximum = (requested: number | undefined) =>
+  Math.min(20, Math.max(1, requested ?? 20));
+
+/** TMDB reports 0 for unrated titles; expose those as no rating. */
+const toRating = (voteAverage: number | undefined) =>
+  typeof voteAverage === 'number' && voteAverage > 0 ? voteAverage : null;
+
 export class TmdbMediaCatalog implements MediaCatalogService {
   private configurationPromise: Promise<TmdbConfiguration> | null = null;
   private readonly genrePromises: Partial<
@@ -200,6 +213,54 @@ export class TmdbMediaCatalog implements MediaCatalogService {
     };
   }
 
+  async trending(options: MediaBrowseOptions = {}): Promise<MediaSummary[]> {
+    const [configuration, genres] = await Promise.all([
+      this.getConfiguration(),
+      this.getGenres('movie'),
+    ]);
+    const response = await this.request<TmdbSearchResponse<TmdbSearchMovie>>(
+      '/trending/movie/week',
+      { language: 'en-US' }
+    );
+    return response.results
+      .slice(0, browseMaximum(options.maximumResults))
+      .map((movie) => ({
+        ...this.toMovieSummary(movie, configuration, genres),
+        backdropUrl: this.backdropUrl(movie.backdrop_path, configuration),
+      }));
+  }
+
+  async popular(
+    mediaType: MediaType,
+    options: MediaBrowseOptions = {}
+  ): Promise<MediaSummary[]> {
+    const [configuration, genres] = await Promise.all([
+      this.getConfiguration(),
+      this.getGenres(mediaType),
+    ]);
+    const maximumResults = browseMaximum(options.maximumResults);
+
+    if (mediaType === 'tv') {
+      const response = await this.request<TmdbSearchResponse<TmdbSearchSeries>>(
+        '/tv/popular',
+        { language: 'en-US' }
+      );
+      return response.results.slice(0, maximumResults).map((series) => ({
+        ...this.toSeriesSummary(series, configuration, genres),
+        backdropUrl: this.backdropUrl(series.backdrop_path, configuration),
+      }));
+    }
+
+    const response = await this.request<TmdbSearchResponse<TmdbSearchMovie>>(
+      '/movie/popular',
+      { language: 'en-US' }
+    );
+    return response.results.slice(0, maximumResults).map((movie) => ({
+      ...this.toMovieSummary(movie, configuration, genres),
+      backdropUrl: this.backdropUrl(movie.backdrop_path, configuration),
+    }));
+  }
+
   async getById(value: string): Promise<MediaDetails | null> {
     const parsed = parseCatalogId(value);
     const configuration = await this.getConfiguration();
@@ -218,7 +279,9 @@ export class TmdbMediaCatalog implements MediaCatalogService {
             releaseYear: getYear(series.first_air_date),
             genres: series.genres?.map((genre) => genre.name) ?? [],
             posterUrl: this.posterUrl(series.poster_path, configuration),
+            backdropUrl: this.backdropUrl(series.backdrop_path, configuration),
             overview: series.overview?.trim() || null,
+            rating: toRating(series.vote_average),
           }
         : null;
     }
@@ -236,7 +299,9 @@ export class TmdbMediaCatalog implements MediaCatalogService {
           releaseYear: getYear(movie.release_date),
           genres: movie.genres?.map((genre) => genre.name) ?? [],
           posterUrl: this.posterUrl(movie.poster_path, configuration),
+          backdropUrl: this.backdropUrl(movie.backdrop_path, configuration),
           overview: movie.overview?.trim() || null,
+          rating: toRating(movie.vote_average),
         }
       : null;
   }
@@ -309,6 +374,24 @@ export class TmdbMediaCatalog implements MediaCatalogService {
         : sizes.at(-1);
     return size
       ? `${configuration.images.secure_base_url}${size}${posterPath}`
+      : null;
+  }
+
+  private backdropUrl(
+    backdropPath: string | null | undefined,
+    configuration: TmdbConfiguration
+  ) {
+    const sizes = configuration.images.backdrop_sizes;
+    if (!backdropPath || !sizes?.length) {
+      return null;
+    }
+    const size = sizes.includes('w780')
+      ? 'w780'
+      : sizes.includes('w1280')
+        ? 'w1280'
+        : sizes.at(-1);
+    return size
+      ? `${configuration.images.secure_base_url}${size}${backdropPath}`
       : null;
   }
 

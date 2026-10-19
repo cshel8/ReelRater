@@ -12,4 +12,6 @@ const unavailable = (): never => {
 export const unavailableMovieCatalog: MovieCatalogService = {
   search: unavailable,
   getById: unavailable,
+  trending: unavailable,
+  popular: unavailable,
 };

@@ -40,6 +40,14 @@ const respondToCatalogError = (response: Response, error: unknown) => {
   });
 };
 
+const readMaximumResults = (value: unknown) => {
+  const requested =
+    typeof value === 'string' ? Number.parseInt(value, 10) : undefined;
+  return Number.isFinite(requested)
+    ? Math.min(20, Math.max(1, requested!))
+    : undefined;
+};
+
 type MediaRouterOptions = {
   forcedMediaType?: MediaTarget['mediaType'];
   legacyMovieResponse?: boolean;
@@ -112,6 +120,43 @@ export const createMediaRouter = (
       respondToCatalogError(response, error);
     }
   });
+
+  // Browse endpoints are modern-router only; the legacy movie router keeps
+  // its original surface. They must precede the /:catalogId route.
+  if (!options.forcedMediaType) {
+    router.get('/trending', async (request, response) => {
+      try {
+        const items = await mediaCatalog.trending({
+          maximumResults: readMaximumResults(request.query.maximumResults),
+        });
+        response.status(200).json({ items });
+      } catch (error) {
+        respondToCatalogError(response, error);
+      }
+    });
+
+    router.get('/popular', async (request, response) => {
+      const mediaType = request.query.mediaType;
+      if (mediaType !== 'movie' && mediaType !== 'tv') {
+        response.status(400).json({
+          error: {
+            code: 'invalid_request',
+            message: 'mediaType must be either movie or tv.',
+          },
+        });
+        return;
+      }
+
+      try {
+        const items = await mediaCatalog.popular(mediaType, {
+          maximumResults: readMaximumResults(request.query.maximumResults),
+        });
+        response.status(200).json({ items });
+      } catch (error) {
+        respondToCatalogError(response, error);
+      }
+    });
+  }
 
   router.get('/:catalogId', async (request, response) => {
     try {

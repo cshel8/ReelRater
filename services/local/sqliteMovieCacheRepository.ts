@@ -24,6 +24,7 @@ interface CachedMovieRow {
   release_year: number | null;
   genres_json: string;
   poster_url: string | null;
+  overview?: string | null;
   cached_at: string;
   refresh_after: string;
   expires_at: string;
@@ -99,11 +100,12 @@ export const createSQLiteMovieCacheRepository = ({
             release_year,
             genres_json,
             poster_url,
+            overview,
             cached_at,
             last_accessed_at,
             refresh_after,
             expires_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           ON CONFLICT(catalog_id) DO UPDATE SET
             media_type = excluded.media_type,
             review_target_type = excluded.review_target_type,
@@ -112,6 +114,7 @@ export const createSQLiteMovieCacheRepository = ({
             release_year = excluded.release_year,
             genres_json = excluded.genres_json,
             poster_url = excluded.poster_url,
+            overview = COALESCE(excluded.overview, cached_movies.overview),
             cached_at = excluded.cached_at,
             last_accessed_at = excluded.last_accessed_at,
             refresh_after = excluded.refresh_after,
@@ -124,6 +127,7 @@ export const createSQLiteMovieCacheRepository = ({
           media.releaseYear,
           JSON.stringify(media.genres),
           media.posterUrl,
+          media.overview ?? null,
           window.fetchedAt,
           window.fetchedAt,
           window.refreshAfter,
@@ -211,7 +215,7 @@ export const createSQLiteMovieCacheRepository = ({
     );
     const row = await database.getFirstAsync<CachedMovieRow>(
       `SELECT catalog_id, media_type, review_target_type, title,
-              release_year, genres_json, poster_url,
+              release_year, genres_json, poster_url, overview,
               cached_at, refresh_after, expires_at
        FROM cached_movies
        WHERE catalog_id = ?
@@ -220,7 +224,13 @@ export const createSQLiteMovieCacheRepository = ({
       now
     );
 
-    return row ? toMedia(row) : null;
+    if (!row) {
+      return null;
+    }
+    const media = toMedia(row);
+    return typeof row.overview === 'string'
+      ? { ...media, overview: row.overview }
+      : media;
   },
 
   async listDueForRefresh(maximumResults = DEFAULT_REFRESH_RESULTS) {
