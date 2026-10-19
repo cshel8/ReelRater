@@ -1,3 +1,4 @@
+import { Ionicons } from '@expo/vector-icons';
 import { useState } from 'react';
 import { router } from 'expo-router';
 import {
@@ -27,6 +28,9 @@ import { formatHandle, isValidHandle, normalizeHandle } from '@/utils/handle';
 
 type SignupStep = 1 | 2 | 3 | 4;
 
+/** Matches Firebase's existing minimum; no extra complexity rules. */
+const MINIMUM_PASSWORD_LENGTH = 6;
+
 export default function Signup() {
   const {
     setDisplayName,
@@ -46,10 +50,19 @@ export default function Signup() {
     useState<ReviewVisibility>('private');
   const [createdUserId, setCreatedUserId] = useState<string | null>(null);
   const [isFinishing, setIsFinishing] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   const continueFromAccount = () => {
     if (!email.trim() || !password || !confirmPassword) {
       Alert.alert('Please enter an email, password, and confirm your password');
+      return;
+    }
+    if (password.length < MINIMUM_PASSWORD_LENGTH) {
+      Alert.alert(
+        'Password too short',
+        'Use at least 6 characters for your password.'
+      );
       return;
     }
     if (password !== confirmPassword) {
@@ -167,30 +180,70 @@ export default function Signup() {
               />
 
               <Text style={styles.label}>Password</Text>
-              <TextInput
-                accessibilityLabel="Password"
-                autoCapitalize="none"
-                autoCorrect={false}
-                onChangeText={setPassword}
-                placeholder="Type here"
-                secureTextEntry
-                style={styles.input}
-                textContentType="none"
-                value={password}
-              />
+              <View style={styles.passwordInputContainer}>
+                <TextInput
+                  accessibilityLabel="Password"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  onChangeText={setPassword}
+                  placeholder="At least 6 characters"
+                  secureTextEntry={!showPassword}
+                  style={styles.passwordInput}
+                  textContentType="none"
+                  value={password}
+                />
+                <Pressable
+                  accessibilityLabel={
+                    showPassword ? 'Hide password' : 'Show password'
+                  }
+                  accessibilityRole="button"
+                  hitSlop={8}
+                  onPress={() => setShowPassword((visible) => !visible)}
+                  style={styles.passwordToggle}
+                >
+                  <Ionicons
+                    color="#737A86"
+                    name={showPassword ? 'eye-off-outline' : 'eye-outline'}
+                    size={20}
+                  />
+                </Pressable>
+              </View>
 
               <Text style={styles.label}>Confirm Password</Text>
-              <TextInput
-                accessibilityLabel="Confirm password"
-                autoCapitalize="none"
-                autoCorrect={false}
-                onChangeText={setConfirmPassword}
-                placeholder="Retype your password"
-                secureTextEntry
-                style={styles.input}
-                textContentType="none"
-                value={confirmPassword}
-              />
+              <View style={styles.passwordInputContainer}>
+                <TextInput
+                  accessibilityLabel="Confirm password"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  onChangeText={setConfirmPassword}
+                  placeholder="Retype your password"
+                  secureTextEntry={!showConfirmPassword}
+                  style={styles.passwordInput}
+                  textContentType="none"
+                  value={confirmPassword}
+                />
+                <Pressable
+                  accessibilityLabel={
+                    showConfirmPassword
+                      ? 'Hide confirmed password'
+                      : 'Show confirmed password'
+                  }
+                  accessibilityRole="button"
+                  hitSlop={8}
+                  onPress={() =>
+                    setShowConfirmPassword((visible) => !visible)
+                  }
+                  style={styles.passwordToggle}
+                >
+                  <Ionicons
+                    color="#737A86"
+                    name={
+                      showConfirmPassword ? 'eye-off-outline' : 'eye-outline'
+                    }
+                    size={20}
+                  />
+                </Pressable>
+              </View>
 
               <Pressable
                 accessibilityRole="button"
@@ -416,6 +469,24 @@ const styles = StyleSheet.create({
     color: '#1D1D23',
     fontSize: 16,
     paddingHorizontal: 14,
+  },
+  passwordInputContainer: {
+    minHeight: 52,
+    borderWidth: 1,
+    borderColor: '#D7DAE0',
+    borderRadius: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  passwordInput: {
+    flex: 1,
+    color: '#1D1D23',
+    fontSize: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+  },
+  passwordToggle: {
+    paddingHorizontal: 12,
   },
   handleInputContainer: {
     minHeight: 52,

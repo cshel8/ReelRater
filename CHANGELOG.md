@@ -3,6 +3,71 @@
 Concise developer history of meaningful ReelRater architecture decisions,
 security changes, backend work, migrations, bug fixes, and feature behavior.
 
+## **2026-10-19 — Visual Consistency: Offline Banners and Reviews Loading**
+
+### Changed
+
+- My Reviews' connection notice and Write Review's offline notice now use the
+  app's established pink offline-banner styling instead of amber, with the
+  accent-toned icon and text. Messages and the conditions that show them are
+  unchanged.
+- Community's offline indicator ("Offline · Showing saved reviews") is now
+  the same pink banner with the offline icon instead of a small gray caption,
+  for both Following and Everyone cache states. Offline detection, caching,
+  and feed behavior are untouched.
+- The My Reviews loading screen background now matches the loaded list
+  (#F7F7F8), eliminating the white-to-gray flash on initial load.
+
+## **2026-10-19 — Visual Consistency: Brand Colors and Complete Profile**
+
+### Changed
+
+- Replaced the remaining legacy iOS-blue (#007AFF) accents with ReelRater's
+  pink tokens: the app-startup loading spinner and retry button, Complete
+  Profile's primary action and Sign Out link, and Profile's avatar-upload
+  spinner and "Change Profile Image" outline button. Destructive Sign Out and
+  account-deletion colors are intentionally unchanged. No #007AFF remains in
+  the app code.
+- Restyled Complete Profile to match the polished Login/Signup conventions:
+  28pt title, styled labels, 52pt rounded inputs, full-width pink Continue
+  button with an in-button saving spinner, keyboard-avoiding scroll layout,
+  and accessibility labels/roles/disabled states on inputs and buttons. All
+  fields, validation rules, profile creation, settings initialization,
+  sign-out, and account-deletion behavior are unchanged.
+
+## **2026-10-19 — Login and Signup Final UI Improvements**
+
+### Changed
+
+- Restyled Login to match Signup's design conventions: centered ReelRater
+  wordmark above the heading, labeled 52pt rounded inputs, one full-width
+  pink Login button with a loading spinner and duplicate-submission guard,
+  and a text-style "Create an account" link replacing the second pink
+  button. The screen stays usable with the keyboard open via the same
+  keyboard-avoiding scroll layout as Signup.
+- Login now validates empty fields and malformed email addresses before
+  contacting Firebase, and failed sign-ins show friendly Alert messages
+  (wrong credentials, rate limiting, connectivity) instead of raw Firebase
+  error strings.
+- Added accessible show/hide password toggles to the Login password field
+  and both Signup password fields.
+- Signup Step 1 now requires at least 6 characters for the password —
+  matching Firebase's existing minimum, with no new complexity rules — so
+  weak-password failures surface immediately instead of at the final step.
+  The four-step wizard, privacy/visibility settings, and partial-failure
+  recovery are unchanged.
+
+## **2026-10-18 — Profile Header Alignment**
+
+### Changed
+
+- The Profile tab now uses the shared native stack header (like Reviews and
+  Community) instead of hiding it and drawing a large in-content title, so
+  the centered "Profile" title aligns vertically with the other tabs and
+  safe-area handling matches. The in-screen title and its compensating top
+  padding were removed; the profile card, avatar, counts, settings, and all
+  other Profile behavior are unchanged.
+
 ## **2026-10-18 — Home Checkpoint 6: Home Search**
 
 ### Added

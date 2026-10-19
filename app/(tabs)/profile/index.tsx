@@ -129,12 +129,10 @@ export default function Profile() {
             contentContainerStyle={styles.container}
             showsVerticalScrollIndicator={false}
         >
-            <Text style={styles.title}>Profile</Text>
-
             <View style={styles.profileCard}>
                 {loading ? (
                     <View style={styles.avatarPlaceholder}>
-                        <ActivityIndicator size="large" color="#007AFF" />
+                        <ActivityIndicator size="large" color={colors.reviewAccent} />
                     </View>
                 ) : profileImage ? (
                     <Image source={{ uri: profileImage }} style={ styles.avatar } />
@@ -319,15 +317,8 @@ const styles = StyleSheet.create({
         backgroundColor: '#fff',
         alignItems: 'center',
         paddingHorizontal: 20,
-        paddingTop: 48,
+        paddingTop: 24,
         paddingBottom: 36,
-    },
-    title: {
-        width: '100%',
-        textAlign: 'center',
-        fontSize: 28,
-        fontWeight: '700',
-        marginBottom: 24,
     },
     profileCard: {
         width: '100%',
@@ -374,14 +365,14 @@ const styles = StyleSheet.create({
         paddingVertical: 10,
         paddingHorizontal: 18,
         borderWidth: 1,
-        borderColor: '#007AFF',
-        borderRadius: 8,
+        borderColor: colors.reviewAccent,
+        borderRadius: 10,
     },
     buttonPressed: {
         opacity: 0.55,
     },
     imageButtonText: {
-        color: '#007AFF',
+        color: colors.reviewAccentText,
         fontWeight: '600',
     },
     signOutButton: {

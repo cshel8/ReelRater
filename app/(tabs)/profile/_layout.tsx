@@ -16,7 +16,7 @@ export default function ProfileLayout() {
         },
       }}
     >
-      <Stack.Screen name="index" options={{ headerShown: false }} />
+      <Stack.Screen name="index" options={{ title: 'Profile' }} />
       <Stack.Screen name="find-people" options={{ title: 'Find People' }} />
       <Stack.Screen name="followers" options={{ title: 'Followers' }} />
       <Stack.Screen name="following" options={{ title: 'Following' }} />
