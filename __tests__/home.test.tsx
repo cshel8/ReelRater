@@ -1,7 +1,11 @@
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import { router } from 'expo-router';
 import Home from '@/app/(tabs)/home';
-import { homeFeedService, homeImageCacheService } from '@/services';
+import {
+  homeFeedService,
+  homeImageCacheService,
+  homeRecommendationsService,
+} from '@/services';
 import type { HomeSection, HomeSectionContent } from '@/services/contracts';
 import type { MediaSummary } from '@/types/domain';
 
@@ -20,9 +24,18 @@ jest.mock('@/services', () => ({
     resolve: jest.fn(),
     purgeStale: jest.fn(),
   },
+  homeRecommendationsService: {
+    getForUser: jest.fn(),
+  },
   mediaCatalogService: {
     search: jest.fn(),
   },
+}));
+
+let mockUserId: string | null = 'user-1';
+jest.mock('@/store/userStore', () => ({
+  userStore: (selector: (state: { userId: string | null }) => unknown) =>
+    selector({ userId: mockUserId }),
 }));
 
 jest.mock('@/services/http/movieCatalogService', () => ({
@@ -126,6 +139,10 @@ describe('Home screen', () => {
     jest.clearAllMocks();
     mockConnectivityListeners.clear();
     mockParentBlurListeners.clear();
+    mockUserId = 'user-1';
+    (homeRecommendationsService.getForUser as jest.Mock).mockResolvedValue(
+      []
+    );
     (homeImageCacheService.resolve as jest.Mock).mockResolvedValue(null);
     (homeImageCacheService.purgeStale as jest.Mock).mockResolvedValue(
       undefined
@@ -336,6 +353,78 @@ describe('Home screen', () => {
       screen.queryByLabelText('Search movies and TV shows')
     ).toBeNull();
     expect(screen.getByText('Popular Movies')).toBeTruthy();
+  });
+
+  it('shows the Recommended for You row only when personalized results exist', async () => {
+    mockSections({
+      trending: remoteContent([media('tmdb:movie:1', 'Dune: Part Two')]),
+      popularMovies: remoteContent([media('tmdb:movie:3', 'Oppenheimer')]),
+      popularTv: remoteContent([]),
+    });
+    (homeRecommendationsService.getForUser as jest.Mock).mockResolvedValue([
+      media('tmdb:movie:50', 'Blade Runner 2049'),
+    ]);
+
+    const screen = render(<Home />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Recommended for You')).toBeTruthy();
+    });
+    expect(screen.getByText('Blade Runner 2049')).toBeTruthy();
+    expect(screen.getByText('Popular Movies')).toBeTruthy();
+    expect(homeRecommendationsService.getForUser).toHaveBeenCalledWith(
+      'user-1'
+    );
+  });
+
+  it('hides the recommendations row for empty or failed results', async () => {
+    mockSections({
+      trending: remoteContent([media('tmdb:movie:1', 'Dune: Part Two')]),
+      popularMovies: remoteContent([media('tmdb:movie:3', 'Oppenheimer')]),
+      popularTv: remoteContent([]),
+    });
+    (homeRecommendationsService.getForUser as jest.Mock).mockRejectedValue(
+      new Error('Network unavailable')
+    );
+
+    const screen = render(<Home />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Popular Movies')).toBeTruthy();
+    });
+    expect(screen.queryByText('Recommended for You')).toBeNull();
+  });
+
+  it('never shows a previous account’s stale recommendations', async () => {
+    mockSections({
+      trending: remoteContent([media('tmdb:movie:1', 'Dune: Part Two')]),
+      popularMovies: remoteContent([media('tmdb:movie:3', 'Oppenheimer')]),
+      popularTv: remoteContent([]),
+    });
+    let releaseFirstUser!: (items: MediaSummary[]) => void;
+    (homeRecommendationsService.getForUser as jest.Mock).mockImplementation(
+      async (requestUserId: string) =>
+        requestUserId === 'user-1'
+          ? new Promise<MediaSummary[]>((resolve) => {
+              releaseFirstUser = resolve;
+            })
+          : []
+    );
+
+    const screen = render(<Home />);
+    await waitFor(() => {
+      expect(screen.getByText('Popular Movies')).toBeTruthy();
+    });
+
+    // The account switches while user-1's request is still in flight.
+    mockUserId = 'user-2';
+    screen.rerender(<Home />);
+    await act(async () => {
+      releaseFirstUser([media('tmdb:movie:50', 'Blade Runner 2049')]);
+    });
+
+    expect(screen.queryByText('Recommended for You')).toBeNull();
+    expect(screen.queryByText('Blade Runner 2049')).toBeNull();
   });
 
   it('keeps the screen usable when a section load rejects outright', async () => {

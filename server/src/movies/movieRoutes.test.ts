@@ -2,7 +2,11 @@ import assert from 'node:assert/strict';
 import type { Server } from 'node:http';
 import { after, before, test } from 'node:test';
 import { createApp } from '../app.js';
-import type { MediaSummary, MovieCatalogService } from './types.js';
+import {
+  InvalidMovieCatalogIdError,
+  type MediaSummary,
+  type MovieCatalogService,
+} from './types.js';
 import { unavailableMovieCatalog } from './unavailableMovieCatalog.js';
 
 let server: Server;
@@ -65,6 +69,35 @@ const fakeCatalog: MovieCatalogService = {
         posterUrl: null,
         backdropUrl: 'https://image.example/w780/dune.jpg',
       },
+    ];
+  },
+  async recommendationsFor(catalogId, options) {
+    browseCalls.push(['recommendationsFor', catalogId, options]);
+    if (catalogId === 'bad-id') {
+      throw new InvalidMovieCatalogIdError('Unsupported media catalog ID');
+    }
+    return [
+      catalogId === 'tmdb:tv:95396'
+        ? {
+            mediaType: 'tv',
+            reviewTargetType: 'series',
+            catalogId: 'tmdb:tv:456',
+            title: 'The Bear',
+            releaseYear: 2022,
+            genres: ['Comedy'],
+            posterUrl: null,
+            backdropUrl: null,
+          }
+        : {
+            mediaType: 'movie',
+            reviewTargetType: 'movie',
+            catalogId: 'tmdb:movie:999',
+            title: 'Blade Runner 2049',
+            releaseYear: 2017,
+            genres: ['Science Fiction'],
+            posterUrl: null,
+            backdropUrl: 'https://image.example/w780/br2049.jpg',
+          },
     ];
   },
   async popular(mediaType, options) {
@@ -237,6 +270,47 @@ test('popular endpoint rejects a missing or invalid mediaType', async () => {
     assert.equal(response.status, 400);
     assert.equal(body.error.code, 'invalid_request');
   }
+});
+
+test('recommendations endpoint returns items for movie and TV seeds', async () => {
+  const movieResponse = await fetch(
+    `${baseUrl}/api/v1/media/${encodeURIComponent('tmdb:movie:693134')}/recommendations?maximumResults=10`
+  );
+  assert.equal(movieResponse.status, 200);
+  const movieBody = await movieResponse.json() as {
+    items: { catalogId: string; backdropUrl: string | null }[];
+  };
+  assert.equal(movieBody.items[0].catalogId, 'tmdb:movie:999');
+  assert.equal(
+    movieBody.items[0].backdropUrl,
+    'https://image.example/w780/br2049.jpg'
+  );
+  assert.deepEqual(browseCalls.at(-1), [
+    'recommendationsFor',
+    'tmdb:movie:693134',
+    { maximumResults: 10 },
+  ]);
+
+  const tvResponse = await fetch(
+    `${baseUrl}/api/v1/media/${encodeURIComponent('tmdb:tv:95396')}/recommendations`
+  );
+  assert.equal(tvResponse.status, 200);
+  const tvBody = await tvResponse.json() as {
+    items: { catalogId: string; mediaType: string }[];
+  };
+  assert.deepEqual(
+    [tvBody.items[0].catalogId, tvBody.items[0].mediaType],
+    ['tmdb:tv:456', 'tv']
+  );
+});
+
+test('recommendations endpoint rejects an invalid catalog ID', async () => {
+  const response = await fetch(
+    `${baseUrl}/api/v1/media/bad-id/recommendations`
+  );
+  const body = await response.json() as { error: { code: string } };
+  assert.equal(response.status, 400);
+  assert.equal(body.error.code, 'invalid_request');
 });
 
 test('legacy movie router does not expose browse endpoints', async () => {

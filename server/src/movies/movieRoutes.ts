@@ -124,6 +124,22 @@ export const createMediaRouter = (
   // Browse endpoints are modern-router only; the legacy movie router keeps
   // its original surface. They must precede the /:catalogId route.
   if (!options.forcedMediaType) {
+    router.get('/:catalogId/recommendations', async (request, response) => {
+      try {
+        const items = await mediaCatalog.recommendationsFor(
+          request.params.catalogId,
+          {
+            maximumResults: readMaximumResults(
+              request.query.maximumResults
+            ),
+          }
+        );
+        response.status(200).json({ items });
+      } catch (error) {
+        respondToCatalogError(response, error);
+      }
+    });
+
     router.get('/trending', async (request, response) => {
       try {
         const items = await mediaCatalog.trending({

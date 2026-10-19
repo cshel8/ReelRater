@@ -213,6 +213,101 @@ test('TMDB adapter normalizes trending and popular browse results', async () => 
   ]);
 });
 
+test('TMDB adapter maps movie and TV recommendations and handles 404 seeds', async () => {
+  const fetchMock = (async (input: string | URL | Request) => {
+    const url = new URL(input instanceof Request ? input.url : input);
+    if (url.pathname.endsWith('/configuration')) {
+      return Response.json({
+        images: {
+          secure_base_url: 'https://image.example/',
+          poster_sizes: ['w342'],
+          backdrop_sizes: ['w780'],
+        },
+      });
+    }
+    if (url.pathname.endsWith('/genre/movie/list')) {
+      return Response.json({
+        genres: [{ id: 878, name: 'Science Fiction' }],
+      });
+    }
+    if (url.pathname.endsWith('/genre/tv/list')) {
+      return Response.json({ genres: [{ id: 18, name: 'Drama' }] });
+    }
+    if (url.pathname.endsWith('/movie/693134/recommendations')) {
+      return Response.json({
+        page: 1,
+        total_pages: 1,
+        results: [
+          {
+            id: 335984,
+            title: 'Blade Runner 2049',
+            release_date: '2017-10-04',
+            genre_ids: [878],
+            poster_path: '/br2049.jpg',
+            backdrop_path: '/br2049-wide.jpg',
+          },
+        ],
+      });
+    }
+    if (url.pathname.endsWith('/tv/95396/recommendations')) {
+      return Response.json({
+        page: 1,
+        total_pages: 1,
+        results: [
+          {
+            id: 136315,
+            name: 'The Bear',
+            first_air_date: '2022-06-23',
+            genre_ids: [18],
+            poster_path: '/bear.jpg',
+            backdrop_path: null,
+          },
+        ],
+      });
+    }
+    if (url.pathname.endsWith('/movie/1/recommendations')) {
+      return new Response(null, { status: 404 });
+    }
+    throw new Error(`Unexpected request: ${url}`);
+  }) as typeof fetch;
+
+  const catalog = new TmdbMovieCatalog('test-token', fetchMock);
+
+  assert.deepEqual(await catalog.recommendationsFor('tmdb:movie:693134'), [
+    {
+      mediaType: 'movie',
+      reviewTargetType: 'movie',
+      catalogId: 'tmdb:movie:335984',
+      title: 'Blade Runner 2049',
+      releaseYear: 2017,
+      genres: ['Science Fiction'],
+      posterUrl: 'https://image.example/w342/br2049.jpg',
+      backdropUrl: 'https://image.example/w780/br2049-wide.jpg',
+    },
+  ]);
+
+  assert.deepEqual(await catalog.recommendationsFor('tmdb:tv:95396'), [
+    {
+      mediaType: 'tv',
+      reviewTargetType: 'series',
+      catalogId: 'tmdb:tv:136315',
+      title: 'The Bear',
+      releaseYear: 2022,
+      genres: ['Drama'],
+      posterUrl: 'https://image.example/w342/bear.jpg',
+      backdropUrl: null,
+    },
+  ]);
+
+  // Unknown seeds yield no recommendations rather than an upstream error.
+  assert.deepEqual(await catalog.recommendationsFor('tmdb:movie:1'), []);
+
+  await assert.rejects(
+    catalog.recommendationsFor('not-a-catalog-id'),
+    { message: 'Unsupported media catalog ID' }
+  );
+});
+
 test('TMDB adapter omits backdrops when the configuration lacks sizes', async () => {
   const fetchMock = (async (input: string | URL | Request) => {
     const url = new URL(input instanceof Request ? input.url : input);

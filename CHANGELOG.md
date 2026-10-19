@@ -3,6 +3,38 @@
 Concise developer history of meaningful ReelRater architecture decisions,
 security changes, backend work, migrations, bug fixes, and feature behavior.
 
+## **2026-10-19 — Personalized "Recommended for You" on Home**
+
+### Added
+
+- New server endpoint `GET /api/v1/media/:catalogId/recommendations`
+  exposing TMDB's movie and TV recommendation endpoints through the existing
+  catalog adapter, with the established ID parsing, media-summary mapping
+  (including backdrops), and error handling. Unknown seeds return an empty
+  list rather than an upstream error; the legacy movie router is unchanged.
+- A Home "Recommended for You" poster row between the Trending hero and
+  Popular Movies, genuinely seeded by the signed-in user's own reviews: up to
+  three of their newest 4–5 star catalog-matched reviews seed per-title TMDB
+  recommendation requests; results are merged round-robin across seeds,
+  deduplicated, stripped of every title the user has already reviewed, and
+  capped at twenty. The row reuses the existing poster-row component, image
+  caching, and Media Details navigation, and loads with Home's existing
+  initial-load, pull-to-refresh, and reconnect triggers.
+- Honest-by-design states: the row is absent for users with no qualifying
+  reviews, when TMDB has nothing to recommend, when offline, or when the API
+  is unavailable — generic content is never relabeled as personalized.
+  Recommendation failures never affect the rest of Home.
+
+### Scope and limitations
+
+- Recommendations are **online-only** in this version: they are intentionally
+  not persisted in the account-agnostic Home snapshot cache (no new SQLite
+  tables or Firestore changes), which also guarantees one account's
+  recommendations can never be shown to another. The Home screen clears the
+  row on account change and discards stale in-flight responses from a
+  previous user. New reviews influence recommendations on the next Home load
+  or pull-to-refresh rather than immediately.
+
 ## **2026-10-19 — Visual Consistency: Offline Banners and Reviews Loading**
 
 ### Changed

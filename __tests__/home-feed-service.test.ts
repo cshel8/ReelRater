@@ -32,6 +32,7 @@ const now = new Date('2026-10-18T12:00:00.000Z');
 const createBrowse = (): jest.Mocked<MediaBrowseService> => ({
   trending: jest.fn().mockResolvedValue([dune]),
   popular: jest.fn().mockResolvedValue([severance]),
+  recommendationsFor: jest.fn().mockResolvedValue([]),
 });
 
 const createSnapshots = (): jest.Mocked<HomeSnapshotRepository> => ({

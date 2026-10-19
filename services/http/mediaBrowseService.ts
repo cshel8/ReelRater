@@ -46,4 +46,13 @@ export const httpMediaBrowseService: MediaBrowseService = {
     url.searchParams.set('mediaType', mediaType);
     return fetchBrowseItems(url, options);
   },
+
+  async recommendationsFor(catalogId, options) {
+    return fetchBrowseItems(
+      new URL(
+        `${apiBaseUrl}/api/v1/media/${encodeURIComponent(catalogId)}/recommendations`
+      ),
+      options
+    );
+  },
 };
