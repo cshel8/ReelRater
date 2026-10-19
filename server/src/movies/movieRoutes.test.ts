@@ -8,6 +8,7 @@ import { unavailableMovieCatalog } from './unavailableMovieCatalog.js';
 let server: Server;
 let baseUrl: string;
 const searches: unknown[][] = [];
+const browseCalls: unknown[][] = [];
 
 const fakeCatalog: MovieCatalogService = {
   async search(query, options) {
@@ -50,6 +51,47 @@ const fakeCatalog: MovieCatalogService = {
           overview: 'First contact.',
         }
       : null;
+  },
+  async trending(options) {
+    browseCalls.push(['trending', options]);
+    return [
+      {
+        mediaType: 'movie',
+        reviewTargetType: 'movie',
+        catalogId: 'catalog:2',
+        title: 'Dune: Part Two',
+        releaseYear: 2024,
+        genres: ['Science Fiction'],
+        posterUrl: null,
+        backdropUrl: 'https://image.example/w780/dune.jpg',
+      },
+    ];
+  },
+  async popular(mediaType, options) {
+    browseCalls.push(['popular', mediaType, options]);
+    return [
+      mediaType === 'tv'
+        ? {
+            mediaType: 'tv',
+            reviewTargetType: 'series',
+            catalogId: 'catalog:tv:2',
+            title: 'Severance',
+            releaseYear: 2022,
+            genres: ['Drama'],
+            posterUrl: null,
+            backdropUrl: null,
+          }
+        : {
+            mediaType: 'movie',
+            reviewTargetType: 'movie',
+            catalogId: 'catalog:3',
+            title: 'Arrival',
+            releaseYear: 2016,
+            genres: ['Science Fiction'],
+            posterUrl: null,
+            backdropUrl: null,
+          },
+    ];
   },
 };
 
@@ -137,6 +179,69 @@ test('movie search endpoint rejects an empty query', async () => {
 
   assert.equal(response.status, 400);
   assert.equal(body.error.code, 'invalid_request');
+});
+
+test('trending endpoint returns browse items with backdrops', async () => {
+  const response = await fetch(
+    `${baseUrl}/api/v1/media/trending?maximumResults=10`
+  );
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), {
+    items: [
+      {
+        mediaType: 'movie',
+        reviewTargetType: 'movie',
+        catalogId: 'catalog:2',
+        title: 'Dune: Part Two',
+        releaseYear: 2024,
+        genres: ['Science Fiction'],
+        posterUrl: null,
+        backdropUrl: 'https://image.example/w780/dune.jpg',
+      },
+    ],
+  });
+  assert.deepEqual(browseCalls.at(-1), [
+    'trending',
+    { maximumResults: 10 },
+  ]);
+});
+
+test('popular endpoint returns movies and TV by mediaType', async () => {
+  const movieResponse = await fetch(
+    `${baseUrl}/api/v1/media/popular?mediaType=movie`
+  );
+  assert.equal(movieResponse.status, 200);
+  const movieBody = await movieResponse.json() as {
+    items: { catalogId: string }[];
+  };
+  assert.equal(movieBody.items[0].catalogId, 'catalog:3');
+
+  const tvResponse = await fetch(
+    `${baseUrl}/api/v1/media/popular?mediaType=tv`
+  );
+  assert.equal(tvResponse.status, 200);
+  const tvBody = await tvResponse.json() as {
+    items: { catalogId: string; mediaType: string }[];
+  };
+  assert.deepEqual(
+    [tvBody.items[0].catalogId, tvBody.items[0].mediaType],
+    ['catalog:tv:2', 'tv']
+  );
+});
+
+test('popular endpoint rejects a missing or invalid mediaType', async () => {
+  for (const suffix of ['', '?mediaType=book']) {
+    const response = await fetch(`${baseUrl}/api/v1/media/popular${suffix}`);
+    const body = await response.json() as { error: { code: string } };
+    assert.equal(response.status, 400);
+    assert.equal(body.error.code, 'invalid_request');
+  }
+});
+
+test('legacy movie router does not expose browse endpoints', async () => {
+  const response = await fetch(`${baseUrl}/api/v1/movies/trending`);
+  assert.equal(response.status, 404);
 });
 
 test('unconfigured movie catalog returns a service-unavailable response', async () => {

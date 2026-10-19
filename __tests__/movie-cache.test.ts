@@ -76,10 +76,14 @@ describe('SQLite movie cache repository', () => {
       2016,
       '["Drama","Science Fiction"]',
       'https://image.example/arrival.jpg',
+      null,
       '2026-01-01T12:00:00.000Z',
       '2026-01-01T12:00:00.000Z',
       '2026-05-31T12:00:00.000Z',
       '2026-06-29T12:00:00.000Z'
+    );
+    expect(runAsync.mock.calls[0][0]).toContain(
+      'overview = COALESCE(excluded.overview, cached_movies.overview)'
     );
     expect(runAsync).toHaveBeenNthCalledWith(
       2,

@@ -48,7 +48,7 @@ export const createCachedMediaCatalogService = (
         return null;
       }
       await movieCache.markAccessed(catalogId).catch(() => undefined);
-      return { ...cachedMovie, overview: null };
+      return { ...cachedMovie, overview: cachedMovie.overview ?? null };
     }
   },
 });

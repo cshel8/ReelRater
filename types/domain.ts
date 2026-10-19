@@ -68,12 +68,16 @@ export type MediaSummary = ReviewMediaTarget & {
   releaseYear: number | null;
   genres: string[];
   posterUrl: string | null;
+  /** Wide hero image; supplied only by browse (trending/popular) results. */
+  backdropUrl?: string | null;
   /** Present when this result came from a retention-managed local cache. */
   catalogDataRetention?: CatalogDataRetention;
 };
 
 export type MediaDetails = MediaSummary & {
   overview: string | null;
+  /** The catalog's 0–10 community score; online details responses only. */
+  rating?: number | null;
 };
 
 export type MediaSearchOptions = {
@@ -107,6 +111,7 @@ export type CatalogDataRetention = {
 
 type ReviewMediaFields = Omit<
   MediaSummary,
+  | 'backdropUrl'
   | 'catalogId'
   | 'catalogDataRetention'
   | 'mediaType'

@@ -14,7 +14,7 @@ const readMediaTarget = (
     ? { mediaType: 'tv', reviewTargetType: 'series' }
     : { mediaType: 'movie', reviewTargetType: 'movie' };
 
-const readMediaSummary = (value: unknown): MediaSummary | null => {
+export const readMediaSummary = (value: unknown): MediaSummary | null => {
   if (!value || typeof value !== 'object') {
     return null;
   }
@@ -41,10 +41,13 @@ const readMediaSummary = (value: unknown): MediaSummary | null => {
       : [],
     posterUrl:
       typeof candidate.posterUrl === 'string' ? candidate.posterUrl : null,
+    ...(typeof candidate.backdropUrl === 'string'
+      ? { backdropUrl: candidate.backdropUrl }
+      : {}),
   };
 };
 
-const getErrorMessage = async (response: Response) => {
+export const getCatalogErrorMessage = async (response: Response) => {
   try {
     const body = await response.json() as {
       error?: { message?: unknown };
@@ -56,6 +59,22 @@ const getErrorMessage = async (response: Response) => {
     // The status-based fallback below also handles non-JSON responses.
   }
   return `Movie service request failed with status ${response.status}`;
+};
+
+/**
+ * A fast reachability probe against the ReelRater API's health endpoint,
+ * used to distinguish "no matches" from "the catalog could not be searched"
+ * when a search returns nothing.
+ */
+export const isCatalogServiceReachable = async (): Promise<boolean> => {
+  try {
+    const response = await fetch(`${apiBaseUrl}/health`, {
+      headers: { Accept: 'application/json' },
+    });
+    return response.ok;
+  } catch {
+    return false;
+  }
 };
 
 export const httpMediaCatalogService: MediaCatalogService = {
@@ -79,7 +98,7 @@ export const httpMediaCatalogService: MediaCatalogService = {
       headers: { Accept: 'application/json' },
     });
     if (!response.ok) {
-      throw new Error(await getErrorMessage(response));
+      throw new Error(await getCatalogErrorMessage(response));
     }
 
     const body = await response.json() as {
@@ -109,7 +128,7 @@ export const httpMediaCatalogService: MediaCatalogService = {
       return null;
     }
     if (!response.ok) {
-      throw new Error(await getErrorMessage(response));
+      throw new Error(await getCatalogErrorMessage(response));
     }
 
     const body = await response.json() as Record<string, unknown>;
@@ -118,6 +137,9 @@ export const httpMediaCatalogService: MediaCatalogService = {
       ? {
           ...summary,
           overview: typeof body.overview === 'string' ? body.overview : null,
+          ...(typeof body.rating === 'number'
+            ? { rating: body.rating }
+            : {}),
         }
       : null;
   },

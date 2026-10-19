@@ -14,6 +14,7 @@ import type {
   MediaSummary,
   PublicUserProfile,
   Review,
+  ReviewMediaTarget,
   SharedReview,
   UserSettings,
   UserProfile,
@@ -62,6 +63,44 @@ export interface MediaCatalogService {
 
 /** @deprecated Prefer MediaCatalogService for new code. */
 export type MovieCatalogService = MediaCatalogService;
+
+export type MediaBrowseOptions = {
+  maximumResults?: number;
+};
+
+/**
+ * Provider-independent access to generic, non-personalized catalog browsing
+ * (trending and popular titles) for discovery surfaces such as Home.
+ */
+export interface MediaBrowseService {
+  trending(options?: MediaBrowseOptions): Promise<MediaSummary[]>;
+  popular(
+    mediaType: ReviewMediaTarget['mediaType'],
+    options?: MediaBrowseOptions
+  ): Promise<MediaSummary[]>;
+}
+
+export type HomeSection = 'trending' | 'popularMovies' | 'popularTv';
+
+export type HomeSectionContent = {
+  items: MediaSummary[];
+  source: 'remote' | 'cache';
+  /** When the returned items were last successfully fetched, if ever. */
+  fetchedAt: string | null;
+  /** Present only when this request could not refresh from the catalog. */
+  remoteError: string | null;
+};
+
+/**
+ * Home-facing catalog browsing that coordinates remote data with a local
+ * snapshot so previously loaded content stays available offline.
+ */
+export interface HomeFeedService {
+  getSection(
+    section: HomeSection,
+    options?: { forceRefresh?: boolean }
+  ): Promise<HomeSectionContent>;
+}
 
 export interface SettingsService {
   get(userId: string): Promise<UserSettings | null>;
