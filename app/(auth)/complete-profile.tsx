@@ -1,6 +1,9 @@
 import { useState } from 'react';
 import { router } from 'expo-router';
 import {
+  ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -8,6 +11,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { colors } from '@/constants/colors';
 import { AccountPrivacySelector } from '@/components/profile/AccountPrivacySelector';
 import { ReviewVisibilitySelector } from '@/components/reviews/ReviewVisibilitySelector';
 import { AccountDeletionAction } from '@/components/account/AccountDeletionAction';
@@ -99,171 +103,198 @@ export default function CompleteProfile() {
   };
 
   return (
-    <ScrollView
-      contentContainerStyle={styles.container}
-      keyboardShouldPersistTaps="handled"
+    <KeyboardAvoidingView
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      style={styles.screen}
     >
-      <Text style={styles.title}>Complete Your Profile</Text>
-      <Text style={styles.message}>
-        Your account is secure. Finish your public profile to continue.
-      </Text>
-
-      <View style={styles.label}>
-        <Text>Display Name</Text>
-      </View>
-      <TextInput
-        placeholder="Type here"
-        value={displayName}
-        onChangeText={setDisplayName}
-        style={styles.input}
-      />
-
-      <View style={styles.label}>
-        <Text>Handle</Text>
-      </View>
-      <View style={styles.handleInputContainer}>
-        <Text
-          style={[
-            styles.handlePrefix,
-            !handle.trim() && styles.handlePrefixMuted,
-          ]}
-        >
-          @
-        </Text>
-        <TextInput
-          placeholder="e.g. moviebuff"
-          value={handle}
-          onChangeText={(value) => setHandle(value.replace(/^@/, ''))}
-          autoCapitalize="none"
-          autoCorrect={false}
-          style={styles.handleInput}
-        />
-      </View>
-
-      <Text style={styles.visibilityTitle}>Account privacy</Text>
-      <View style={styles.visibilityOptions}>
-        <AccountPrivacySelector
-          disabled={saving}
-          onChange={setAccountPrivacy}
-          value={accountPrivacy}
-        />
-      </View>
-
-      <Text style={styles.visibilityTitle}>Default review visibility</Text>
-      <View style={styles.visibilityOptions}>
-        <ReviewVisibilitySelector
-          disabled={saving}
-          onChange={setDefaultVisibility}
-          value={defaultVisibility}
-        />
-      </View>
-
-      <Pressable
-        disabled={saving}
-        onPress={completeProfile}
-        style={({ pressed }) => [
-          styles.button,
-          (pressed || saving) && styles.buttonMuted,
-        ]}
+      <ScrollView
+        contentContainerStyle={styles.container}
+        keyboardShouldPersistTaps="handled"
       >
-        <Text style={styles.buttonText}>
-          {saving ? 'Saving...' : 'Continue'}
-        </Text>
-      </Pressable>
+        <View style={styles.content}>
+          <Text style={styles.title}>Complete Your Profile</Text>
+          <Text style={styles.message}>
+            Your account is secure. Finish your public profile to continue.
+          </Text>
 
-      <Pressable disabled={saving} onPress={signOut} style={styles.secondaryButton}>
-        <Text style={styles.secondaryButtonText}>Sign Out</Text>
-      </Pressable>
+          <Text style={styles.label}>Display Name</Text>
+          <TextInput
+            accessibilityLabel="Display name"
+            editable={!saving}
+            onChangeText={setDisplayName}
+            placeholder="Type here"
+            style={styles.input}
+            value={displayName}
+          />
 
-      <AccountDeletionAction onDeleted={handleAccountDeleted} />
-    </ScrollView>
+          <Text style={styles.label}>Handle</Text>
+          <View style={styles.handleInputContainer}>
+            <Text
+              style={[
+                styles.handlePrefix,
+                !handle.trim() && styles.handlePrefixMuted,
+              ]}
+            >
+              @
+            </Text>
+            <TextInput
+              accessibilityLabel="Handle"
+              autoCapitalize="none"
+              autoCorrect={false}
+              editable={!saving}
+              onChangeText={(value) => setHandle(value.replace(/^@/, ''))}
+              placeholder="e.g. moviebuff"
+              style={styles.handleInput}
+              value={handle}
+            />
+          </View>
+
+          <Text style={styles.visibilityTitle}>Account privacy</Text>
+          <AccountPrivacySelector
+            disabled={saving}
+            onChange={setAccountPrivacy}
+            value={accountPrivacy}
+          />
+
+          <Text style={styles.visibilityTitle}>Default review visibility</Text>
+          <ReviewVisibilitySelector
+            disabled={saving}
+            onChange={setDefaultVisibility}
+            value={defaultVisibility}
+          />
+
+          <Pressable
+            accessibilityRole="button"
+            accessibilityState={{ disabled: saving }}
+            disabled={saving}
+            onPress={completeProfile}
+            style={({ pressed }) => [
+              styles.button,
+              (pressed || saving) && styles.buttonMuted,
+            ]}
+          >
+            {saving ? (
+              <ActivityIndicator color="#FFFFFF" />
+            ) : (
+              <Text style={styles.buttonText}>Continue</Text>
+            )}
+          </Pressable>
+
+          <Pressable
+            accessibilityRole="button"
+            accessibilityState={{ disabled: saving }}
+            disabled={saving}
+            onPress={signOut}
+            style={styles.secondaryButton}
+          >
+            <Text style={styles.secondaryButtonText}>Sign Out</Text>
+          </Pressable>
+
+          <AccountDeletionAction onDeleted={handleAccountDeleted} />
+        </View>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
+  screen: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+  },
   container: {
     flexGrow: 1,
-    backgroundColor: '#fff',
-    alignItems: 'center',
-    paddingTop: 50,
-    paddingBottom: 36,
+    paddingHorizontal: 22,
+    paddingTop: 54,
+    paddingBottom: 34,
+  },
+  content: {
+    width: '100%',
+    maxWidth: 520,
+    alignSelf: 'center',
   },
   title: {
-    fontSize: 22,
-    fontWeight: '600',
-    marginBottom: 10,
+    color: '#17171C',
+    fontSize: 28,
+    fontWeight: '700',
   },
   message: {
-    width: '90%',
-    color: '#666',
-    textAlign: 'center',
-    marginBottom: 16,
+    color: '#737A86',
+    fontSize: 15,
+    lineHeight: 21,
+    marginTop: 9,
+    marginBottom: 12,
   },
   label: {
-    padding: 10,
-    alignSelf: 'flex-start',
-    width: '90%',
+    color: '#24252A',
+    fontSize: 15,
+    fontWeight: '700',
+    marginTop: 14,
+    marginBottom: 8,
   },
   input: {
-    width: '90%',
+    minHeight: 52,
     borderWidth: 1,
-    borderColor: '#ccc',
-    padding: 10,
-    marginVertical: 8,
-    borderRadius: 6,
+    borderColor: '#D7DAE0',
+    borderRadius: 10,
+    color: '#1D1D23',
+    fontSize: 16,
+    paddingHorizontal: 14,
   },
   handleInputContainer: {
-    width: '90%',
+    minHeight: 52,
+    borderWidth: 1,
+    borderColor: '#D7DAE0',
+    borderRadius: 10,
     flexDirection: 'row',
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#ccc',
-    marginVertical: 8,
-    borderRadius: 6,
   },
   handlePrefix: {
-    paddingLeft: 10,
+    color: '#22252B',
     fontSize: 16,
-    color: '#222',
+    paddingLeft: 14,
   },
   handlePrefixMuted: {
-    color: '#aaa',
+    color: '#A6ABB4',
   },
   handleInput: {
     flex: 1,
-    padding: 10,
-    paddingLeft: 2,
-  },
-  button: {
-    marginTop: 16,
-    backgroundColor: '#007AFF',
-    paddingVertical: 12,
-    paddingHorizontal: 40,
-    borderRadius: 8,
+    color: '#1D1D23',
+    fontSize: 16,
+    paddingHorizontal: 3,
+    paddingVertical: 14,
   },
   visibilityTitle: {
-    width: '90%',
     color: '#24252A',
+    fontSize: 15,
     fontWeight: '700',
     marginTop: 20,
     marginBottom: 8,
   },
-  visibilityOptions: {
-    width: '90%',
+  button: {
+    minHeight: 50,
+    borderRadius: 10,
+    backgroundColor: colors.reviewAccent,
+    marginTop: 30,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   buttonMuted: {
     opacity: 0.55,
   },
   buttonText: {
-    color: 'white',
-    fontWeight: '600',
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '700',
   },
   secondaryButton: {
-    marginTop: 18,
-    padding: 10,
+    minHeight: 42,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 10,
   },
   secondaryButtonText: {
-    color: '#007AFF',
+    color: colors.reviewAccentText,
     fontWeight: '600',
   },
 });

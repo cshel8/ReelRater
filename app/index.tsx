@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { router } from 'expo-router';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { colors } from '@/constants/colors';
 import { authService, profileService, reviewService } from '@/services';
 import { userStore } from '@/store/userStore';
 
@@ -101,7 +102,7 @@ export default function Index() {
                 </>
             ) : (
                 <>
-                    <ActivityIndicator size="large" color="#007AFF" />
+                    <ActivityIndicator size="large" color={colors.reviewAccent} />
                     <Text style={styles.message}>Loading ReelRater...</Text>
                 </>
             )}
@@ -128,13 +129,13 @@ const styles = StyleSheet.create({
         textAlign: 'center',
     },
     button: {
-        paddingVertical: 11,
-        paddingHorizontal: 24,
-        borderRadius: 8,
-        backgroundColor: '#007AFF',
+        paddingVertical: 12,
+        paddingHorizontal: 28,
+        borderRadius: 10,
+        backgroundColor: colors.reviewAccent,
     },
     buttonPressed: {
-        opacity: 0.55,
+        backgroundColor: colors.reviewAccentPressed,
     },
     buttonText: {
         color: '#fff',

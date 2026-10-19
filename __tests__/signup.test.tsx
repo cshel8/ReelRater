@@ -151,4 +151,52 @@ describe('Signup screen', () => {
     expect(screen.getByText('Create your account')).toBeTruthy();
     expect(screen.queryByText('Choose your profile')).toBeNull();
   });
+
+  it('requires at least six password characters on the first step', () => {
+    const alertSpy = jest.spyOn(Alert, 'alert');
+    const screen = render(<Signup />);
+
+    fireEvent.changeText(screen.getByLabelText('Email'), 'connor@example.com');
+    fireEvent.changeText(screen.getByLabelText('Password'), 'tiny5');
+    fireEvent.changeText(screen.getByLabelText('Confirm password'), 'tiny5');
+    fireEvent.press(screen.getByText('Continue'));
+
+    expect(alertSpy).toHaveBeenCalledWith(
+      'Password too short',
+      'Use at least 6 characters for your password.'
+    );
+    expect(screen.getByText('Create your account')).toBeTruthy();
+    expect(screen.queryByText('Choose your profile')).toBeNull();
+
+    // Exactly six characters is accepted with no extra complexity rules.
+    fireEvent.changeText(screen.getByLabelText('Password'), 'simple');
+    fireEvent.changeText(screen.getByLabelText('Confirm password'), 'simple');
+    fireEvent.press(screen.getByText('Continue'));
+    expect(screen.getByText('Choose your profile')).toBeTruthy();
+  });
+
+  it('toggles visibility independently for both password fields', () => {
+    const screen = render(<Signup />);
+
+    expect(screen.getByLabelText('Password').props.secureTextEntry).toBe(true);
+    expect(
+      screen.getByLabelText('Confirm password').props.secureTextEntry
+    ).toBe(true);
+
+    fireEvent.press(screen.getByLabelText('Show password'));
+    expect(screen.getByLabelText('Password').props.secureTextEntry).toBe(
+      false
+    );
+    expect(
+      screen.getByLabelText('Confirm password').props.secureTextEntry
+    ).toBe(true);
+
+    fireEvent.press(screen.getByLabelText('Show confirmed password'));
+    expect(
+      screen.getByLabelText('Confirm password').props.secureTextEntry
+    ).toBe(false);
+
+    fireEvent.press(screen.getByLabelText('Hide password'));
+    expect(screen.getByLabelText('Password').props.secureTextEntry).toBe(true);
+  });
 });

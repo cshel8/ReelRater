@@ -1257,14 +1257,34 @@ export default function CommunityScreen() {
         </View>
       ) : null}
       {!selectedCommunityMedia && communityMode === 'everyone' && everyoneSource === 'cache' && everyoneReviews.length > 0 ? (
-        <Text accessibilityLiveRegion="polite" style={styles.offlineIndicator}>
-          Offline · Showing saved reviews
-        </Text>
+        <View style={styles.offlineIndicator}>
+          <Ionicons
+            color={colors.reviewAccentText}
+            name="cloud-offline-outline"
+            size={16}
+          />
+          <Text
+            accessibilityLiveRegion="polite"
+            style={styles.offlineIndicatorText}
+          >
+            Offline · Showing saved reviews
+          </Text>
+        </View>
       ) : null}
       {!selectedCommunityMedia && communityMode === 'following' && followingSource === 'cache' && reviews.length > 0 ? (
-        <Text accessibilityLiveRegion="polite" style={styles.offlineIndicator}>
-          Offline · Showing saved reviews
-        </Text>
+        <View style={styles.offlineIndicator}>
+          <Ionicons
+            color={colors.reviewAccentText}
+            name="cloud-offline-outline"
+            size={16}
+          />
+          <Text
+            accessibilityLiveRegion="polite"
+            style={styles.offlineIndicatorText}
+          >
+            Offline · Showing saved reviews
+          </Text>
+        </View>
       ) : null}
     </View>
   );
@@ -1700,7 +1720,21 @@ const styles = StyleSheet.create({
     color: '#7D8490',
     fontSize: 12,
   },
-  offlineIndicator: { color: '#7D8490', fontSize: 12, fontWeight: '600', marginTop: -6 },
+  offlineIndicator: {
+    alignItems: 'center',
+    backgroundColor: '#FCEAF0',
+    borderRadius: 10,
+    flexDirection: 'row',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+  },
+  offlineIndicatorText: {
+    color: colors.reviewAccentText,
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '500',
+  },
   loadMoreButton: { alignItems: 'center', paddingVertical: 16 },
   loadMoreText: { color: colors.reviewAccentText, fontWeight: '700' },
   selectedMediaEmptyState: {

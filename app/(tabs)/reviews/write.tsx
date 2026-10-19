@@ -795,11 +795,11 @@ const styles = StyleSheet.create({
   offlineNotice: {
     padding: 12,
     borderRadius: 10,
-    backgroundColor: '#FFF4D6',
+    backgroundColor: '#FCEAF0',
     marginBottom: 12,
   },
   offlineNoticeText: {
-    color: '#6B4F00',
+    color: colors.reviewAccentText,
   },
   syncNotice: {
     padding: 12,

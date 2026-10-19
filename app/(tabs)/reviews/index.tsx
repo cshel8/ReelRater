@@ -463,7 +463,11 @@ export default function MyReviewsScreen() {
 
       {!remoteAvailable && (
         <View style={styles.connectionNotice}>
-          <Ionicons color="#7B5A00" name="cloud-offline-outline" size={20} />
+          <Ionicons
+            color={colors.reviewAccentText}
+            name="cloud-offline-outline"
+            size={20}
+          />
           <Text style={styles.connectionNoticeText}>
             {remoteError?.includes('permission-denied')
               ? 'Firestore denied access to your reviews. Check that your security rules are still active.'
@@ -645,7 +649,7 @@ export default function MyReviewsScreen() {
 const styles = StyleSheet.create({
   loadingContainer: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#F7F7F8',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -729,7 +733,7 @@ const styles = StyleSheet.create({
   },
   connectionNotice: {
     borderRadius: 10,
-    backgroundColor: '#FFF4D6',
+    backgroundColor: '#FCEAF0',
     marginTop: 14,
     padding: 12,
     flexDirection: 'row',
@@ -737,7 +741,7 @@ const styles = StyleSheet.create({
     gap: 9,
   },
   connectionNoticeText: {
-    color: '#6B4F00',
+    color: colors.reviewAccentText,
     flex: 1,
     fontSize: 13,
     lineHeight: 18,
